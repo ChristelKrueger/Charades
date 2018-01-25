@@ -77,13 +77,17 @@ sub extract_100K_reads {
 
 sub collect_base_composition_info {
 	
-	open (my $out, '>', "sequence_composition_stats.txt") or die "Cannot write to file: $!";
-	#print $out "file_name\tpos1_A\tpos1_C\tpos1_T\tpos1_G\tpos2_A\tpos2_C\tpos2_T\tpos2_G\tpos3_A\tpos3_C\tpos3_T\tpos3_G\tpos4_A\tpos4_C\tpos4_T\tpos4_G\tpos8_A\tpos8_C\tpos8_T\tpos8_G\tpos9_A\tpos9_C\tpos9_T\tpos9_G\tpos10_A\tpos10_C\tpos10_T\tpos10_G	pos11_A	pos11_C\tpos11_T\tpos11_G\tpos12_A\tpos12_C\tpos12_T\tpos12_G\tpos20_A\tpos20_C\tpos20_T\tpos20_G\tpos30_A\tpos30_C\tpos30_T\tpos30_G\n";
-	print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
+	open (my $out, '>', "sequence_composition_stats.csv") or die "Cannot write to file: $!";
+	print $out "file_name,pos1_A,pos1_C,pos1_T,pos1_G,pos2_A,pos2_C,pos2_T,pos2_G,pos3_A,pos3_C,pos3_T,pos3_G,pos4_A,pos4_C,pos4_T,pos4_G,pos8_A,pos8_C,pos8_T,",
+				"pos8_G,pos9_A,pos9_C,pos9_T,pos9_G,pos10_A,pos10_C,pos10_T,pos10_G,pos11_A,pos11_C,pos11_T,pos11_G,pos12_A,pos12_C,pos12_T,pos12_G,",
+				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G\n";
+	#print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
 	
 	chdir ("./charades_temp") or die "Cannot move to temporary folder: $!";
 	
 	my @file_heads = <*.100K.fastq>;
+	my %info;			## This is the data structure that contains all the base composition info (hash of array of hashes)
+
 
 	FILE: foreach my $file_head(@file_heads) {
 		my $file_name = $file_head;
@@ -131,11 +135,13 @@ sub collect_base_composition_info {
 		# Base composition is very different between different library preps.
 	
 		my @interesting_positions = (1,2,3,4,8,9,10,11,12,20,30);
+		
 		my $As = 0;
 		my $Cs = 0;
 		my $Ts = 0;
 		my $Gs = 0;
 		my $Ns = 0;
+		
 	
 		foreach my $interesting_position(@interesting_positions) {
 			foreach my $read(@reads) {
@@ -187,13 +193,19 @@ sub collect_base_composition_info {
 			}
 			
 			warn "Percentages for A,C,T,G at position $interesting_position are $percentA, $percentC, $percentG, $percentT\n";
-			print $out "$file_name\t$interesting_position\t$percentA\t$percentC\t$percentT\t$percentG\t$percentN\n";
+			#print $out "$file_name\t$interesting_position\t$percentA\t$percentC\t$percentT\t$percentG\t$percentN\n";
 			
 			## Generating a data structure containing the composition info
+			my $position_info = 	{position => $interesting_position,
+									 percentA => $percentA,
+									 percentC => $percentC,
+									 percentT => $percentT,
+									 percentG => $percentG};
+			
+			push @{$info{$file_name}},$position_info;
 			
 			
-			
-	
+			## resetting base counts
 			$As = 0;
 			$Cs = 0;
 			$Ts = 0;
@@ -202,8 +214,24 @@ sub collect_base_composition_info {
 		}
 		close $in or die;
 	}
+	
+	foreach my $file (keys %info) {
+		print $out "$file,", $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentG},",",$info{$file} -> [0] -> {percentT},
+					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentG},",",$info{$file} -> [1] -> {percentT},
+					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentG},",",$info{$file} -> [2] -> {percentT},
+					",",$info{$file} -> [3] -> {percentA},",",$info{$file} -> [3] -> {percentC},",",$info{$file} -> [3] -> {percentG},",",$info{$file} -> [3] -> {percentT},
+					",",$info{$file} -> [4] -> {percentA},",",$info{$file} -> [4] -> {percentC},",",$info{$file} -> [4] -> {percentG},",",$info{$file} -> [4] -> {percentT},
+					",",$info{$file} -> [5] -> {percentA},",",$info{$file} -> [5] -> {percentC},",",$info{$file} -> [5] -> {percentG},",",$info{$file} -> [5] -> {percentT},
+					",",$info{$file} -> [6] -> {percentA},",",$info{$file} -> [6] -> {percentC},",",$info{$file} -> [6] -> {percentG},",",$info{$file} -> [6] -> {percentT},
+					",",$info{$file} -> [7] -> {percentA},",",$info{$file} -> [7] -> {percentC},",",$info{$file} -> [7] -> {percentG},",",$info{$file} -> [7] -> {percentT},
+					",",$info{$file} -> [8] -> {percentA},",",$info{$file} -> [8] -> {percentC},",",$info{$file} -> [8] -> {percentG},",",$info{$file} -> [8] -> {percentT},
+					",",$info{$file} -> [9] -> {percentA},",",$info{$file} -> [9] -> {percentC},",",$info{$file} -> [9] -> {percentG},",",$info{$file} -> [9] -> {percentT},
+					",",$info{$file} -> [10] -> {percentA},",",$info{$file} -> [10] -> {percentC},",",$info{$file} -> [10] -> {percentG},",",$info{$file} -> [10] -> {percentT}, "\n";
+	}
+	
 	close $out or die "Could not close output file:$!\n";
-}
+}	
+
 
 
 
@@ -238,77 +266,6 @@ sub guess_library {
 	#}
 	
 	## Guess which library from sequence composition
-	
-	foreach my $file (keys %info) {
-	
-		if ($info{$file}->[7]->{percentC} <= 8) {	   				# percent C at position 30 (this goes into the WGBS branch) 
-			if ($info{$file}->[4]->{percentC} <= 0) {   			# percent C at position 11
-				if ($info{$file}->[1]->{percentC} <= 5) {			# percent C at position 8
-					if ($info{$file}->[3]->{percentG} <= 26) {		# percent G at position 10
-						warn "$file seems to be WGBS\n";			# leaf WGBS
-					}
-					if ($info{$file}->[3]->{percentG} > 26) {		# percent G at position 10
-						warn "$file seems to be Amplicon\n";		# leaf Amplicon
-					}
-				}
-				if ($info{$file}->[1]->{percentC} > 5) {			# percent C at position 8
-					warn "$file seems to be UMI-RRBS\n";			# leaf UMI-RRBS
-				}
-			}
-			if ($info{$file}->[4]->{percentC} > 0) {				# percent C at position 11
-				if ($info{$file}->[3]->{percentC} <= 2) {			# percent C at position 10
-					if ($info{$file}->[0]->{percentG} <= 29) {		# percent G at position 4
-						warn "$file seems to be Swift\n";			# leaft Swift
-					}
-					if ($info{$file}->[0]->{percentG} > 29) {		# percent G at position 4
-						warn "$file seems to be Truseq\n";			# leaf Truseq
-					}
-				}
-				if ($info{$file}->[3]->{percentC} > 2) {			# percent C at position 10
-					warn "$file seems to be NOMEseq\n";				# leaf NOMEseq
-				}
-			}
-		}
-		if ($info{$file}->[7]->{percentC} > 8) {	   				# percent C at position 30 (this goes into the PBAT branch) 
-			if ($info{$file}->[1]->{percentC} <= 18) {				# percent C at position 8
-				if ($info{$file}->[1]->{percentG} <= 12) {			# percent G at position 8
-					if ($info{$file}->[0]->{percentC} <= 29) {		# percent C at position 4
-						warn "$file seems to be scNOME\n";			# leaf scNOME
-					}
-					if ($info{$file}->[0]->{percentC} > 29) {		# percent C at position 4
-						if ($info{$file}->[0]->{percentT} <= 11) {	# percent T at position 4
-							warn "$file seems to be scNOME\n";		# leaf scNOME
-						}
-						if ($info{$file}->[0]->{percentT} > 11) {	# percent T at position 4
-							warn "$file seems to be 9N_sc\n";		# leaf 9N_sc
-						}
-					}
-				}
-				if ($info{$file}->[1]->{percentG} > 12) {			# percent G at position 8
-					if ($info{$file}->[0]->{percentT} <= 17) {		# percent T at position 4
-						warn "$file seems to be scNOME\n";			# leaf scNOME
-					}
-					if ($info{$file}->[0]->{percentT} > 17) {		# percent T at position 4
-						warn "$file seems to be 6N_sc\n";			# leaf 6N_sc
-					}
-				}
-			}
-			if ($info{$file}->[1]->{percentC} > 18) {				# percent C at position 8
-				if ($info{$file}->[1]->{percentG} <= 1) {			# percent G at position 8
-					warn "$file seems to be 6N_PBAT\n";				# leaf 9N_PBAT
-				}
-				if ($info{$file}->[1]->{percentG} > 1) {			# percent G at position 8
-					warn "$file seems to be 9N_PBAT\n";				# leaf 9N_PBAT
-				}
-			}
-		}
-	}
-	
-	
-	
-	
-	
-	
 	
 	
 	
