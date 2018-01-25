@@ -6,34 +6,15 @@ use strict;
 # tries to find out which how the library was created. It will use sequence composition at different
 # positions in the sequence.
 
-
-
-# Finding out which files to analyse
-
-my @files = <training_datasets/file_heads/*.fastq>;
-#warn join("\n",@files)."\n";
-
+my $debug = 0;
 my @files_to_analyse;
 
-foreach my $file(@files) {
-	$file = substr($file, 29);
-	if ($file =~ /R1/) {
-		push @files_to_analyse, $file;
-	}
-	elsif ($file !~ /R2|R3|R4/) {
-		push @files_to_analyse, $file;
-	}
-}
+	
 
-warn "\nFiles chosen for analysis are\n", join("\n",@files_to_analyse),"\n\n\n";
-
-my $As = 0;
-my $Cs = 0;
-my $Ts = 0;
-my $Gs = 0;
-my $Ns = 0;	
-
+#files_to_analyse();
+#extract_100K_reads();
 collect_base_composition_info();
+
 #guess_library();
 
 
@@ -42,27 +23,100 @@ collect_base_composition_info();
 ### SUBROUTINES ###
 ###################
 
-sub collect_base_composition_info {
 
-	open (my $out, '>', "charades_sequence_composition.txt") or die "Cannot write to file: $!";
-	print $out "file_name\tposition\t%A\t%C\t%T\t%G\t%N\n";
-
-	FILE: foreach my $file_to_analyse(@files_to_analyse) {
-
-
-		# Read sequences in the fastq file
-
-		open (my $in, "training_datasets/file_heads/$file_to_analyse") or die "Cannot open fastq file: $! ";
-
-
-		# Collecting all the reads from the fastq file.
-		my @reads;
-
-		while (1) {
+sub files_to_analyse {											## Finding out which files to analyse
 	
-			my $header = <$in>;
+	my @files = @ARGV;
+	my $length = @files;
+	warn "\nScanning $length input file(s).\n";
+	warn join("\n",@files)."\n" if $debug;
+
+
+	foreach my $file(@files) {
+	
+		
+	
+		if ($file =~ /R1/) {
+			push @files_to_analyse, $file;
+		}
+		elsif ($file !~ /R2|R3|R4/) {
+			push @files_to_analyse, $file;
+		}
+	}
+	warn "\nFiles selected for analysis are\n", join("\n",@files_to_analyse),"\n\n\n";
+}
+
+
+
+
+sub extract_100K_reads {
+
+	my @subfolders;										## Extracting the filenames if a path is given
+	system "mkdir charades_temp";
+	
+	warn "\nExtracting the first 100 000 reads\n";
+	foreach my $file_to_analyse(@files_to_analyse) { 
+	
+		my $file_name;
+		if ($file_to_analyse =~ /\//g) {						## remove the path from the file name
+			push @subfolders, pos$file_to_analyse;
+			warn "The last slash is found at ", $subfolders[-1], "\n" if $debug;
+		}
+		
+	
+		if (scalar @subfolders > 0) {							## if files are in the current directory						
+			$file_name = substr($file_to_analyse, ($subfolders[-1]));
+		}
+		else {$file_name = $file_to_analyse};
+		system "zcat $file_to_analyse | head -400000 > charades_temp/$file_name.100K.fastq";
+	}
+}
+
+
+
+
+sub collect_base_composition_info {
+	
+	open (my $out, '>', "sequence_composition_stats.txt") or die "Cannot write to file: $!";
+	#print $out "file_name\tpos1_A\tpos1_C\tpos1_T\tpos1_G\tpos2_A\tpos2_C\tpos2_T\tpos2_G\tpos3_A\tpos3_C\tpos3_T\tpos3_G\tpos4_A\tpos4_C\tpos4_T\tpos4_G\tpos8_A\tpos8_C\tpos8_T\tpos8_G\tpos9_A\tpos9_C\tpos9_T\tpos9_G\tpos10_A\tpos10_C\tpos10_T\tpos10_G	pos11_A	pos11_C\tpos11_T\tpos11_G\tpos12_A\tpos12_C\tpos12_T\tpos12_G\tpos20_A\tpos20_C\tpos20_T\tpos20_G\tpos30_A\tpos30_C\tpos30_T\tpos30_G\n";
+	print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
+	
+	chdir ("./charades_temp") or die "Cannot move to temporary folder: $!";
+	
+	my @file_heads = <*.100K.fastq>;
+
+	FILE: foreach my $file_head(@file_heads) {
+		my $file_name = $file_head;
+		my $remove = substr($file_name,-11);
+		$file_name =~ s/$remove//;
+
+
+		## Read sequences in the fastq file
+
+		open (my $in, $file_head) or die "Cannot open fastq file: $! ";
+
+
+		## Collecting all the reads from the fastq file.
+		my @reads;
+		warn "\nSummarising sequence composition for $file_name\n\n";
+
+		while (<$in>) {
+	
+			my $header = $_;
+			unless ($header =~ /^@/) {
+				warn "$file_head does not look like it's in fastq format. Skipping.\n";
+				next FILE;
+			}
 			my $sequence = <$in>;
+			unless ($header =~ /A|T|C|G|N/) {
+				warn "Sequence in $file_head contains bases other than A, T, C, G, N. Skipping.\n";
+				next FILE;
+			}
 			my $plusline = <$in>;
+			unless ($header =~ /^@/) {
+				warn "$file_head does not look like it's in fastq format. Skipping.\n";
+				next FILE;
+			}
 			my $quality_scores = <$in>;
 			last unless ($quality_scores);
 			chomp $sequence;
@@ -77,26 +131,48 @@ sub collect_base_composition_info {
 		# Base composition is very different between different library preps.
 	
 		my @interesting_positions = (1,2,3,4,8,9,10,11,12,20,30);
+		my $As = 0;
+		my $Cs = 0;
+		my $Ts = 0;
+		my $Gs = 0;
+		my $Ns = 0;
+	
 		foreach my $interesting_position(@interesting_positions) {
-
 			foreach my $read(@reads) {
 				$read = uc($read);
 				my @bases = split(//,$read);
 				my $base = $bases[$interesting_position -1];
-				#warn "The base at position $interesting_position is an $base\n";
+				#warn "The base at position $interesting_position is a $base\n";
 		
 				unless ($base) {
-					warn "A read in $file_to_analyse is shorter than expected with only ", length($read), " bases. 
-					Is this a trimmed file?\nSequence: ", $read, "\n";
+					warn "A read in $file_head is shorter than expected with only ", length($read), " bases. 
+					Is this a trimmed file? \nSkipping Sequence: ", $read, "\n";
 					next;
-				} # There really shouldn't be any shorter reads!
+				} # There shouldn't be any shorter reads unless the runs are really old.
 			
-				count_base_occurance($base);
+				if ($base eq "A") {
+					++ $As;
+				}
+				elsif ($base eq "C") {
+					++$Cs;
+				}
+				elsif ($base eq "T") {
+					++$Ts;
+				}
+				elsif ($base eq "G") {
+					++$Gs;
+				}
+				elsif ($base eq "N") {
+					++$Ns;
+				}
+				else {
+					warn "Unexpected base found: $base Only A,C,T,G and N allowed\n";
+				}
 			}
 			#warn "There were $As As, $Cs Cs, $Ts Ts, $Gs, Gs and $Ns other bases at position $interesting_position\n";
 			
 			if ($As+$Cs+$Ts+$Gs+$Ns == 0) {
-				warn "File $file_to_analyse does not seem to contain a (long enough)sequence.\n";
+				warn "File $file_head does not seem to contain a (long enough)sequence.\n";
 				next FILE;
 			}
 	
@@ -109,9 +185,14 @@ sub collect_base_composition_info {
 			if ($percentN > 5) {
 				warn "WARNING: There are more than 5% Ns at position $interesting_position.\n";
 			}
-	
-			warn "In file $file_to_analyse, the percentages for A,C,T,G at position $interesting_position are $percentA, $percentC, $percentG, $percentT\n";
-			print $out "$file_to_analyse\t$interesting_position\t$percentA\t$percentC\t$percentT\t$percentG\t$percentN\n";
+			
+			warn "Percentages for A,C,T,G at position $interesting_position are $percentA, $percentC, $percentG, $percentT\n";
+			print $out "$file_name\t$interesting_position\t$percentA\t$percentC\t$percentT\t$percentG\t$percentN\n";
+			
+			## Generating a data structure containing the composition info
+			
+			
+			
 	
 			$As = 0;
 			$Cs = 0;
@@ -124,31 +205,6 @@ sub collect_base_composition_info {
 	close $out or die "Could not close output file:$!\n";
 }
 
-
-
-
-sub count_base_occurance {
-	my $base = shift @_;
-	
-	if ($base eq "A") {
-		++ $As;
-	}
-	elsif ($base eq "C") {
-		++$Cs;
-	}
-	elsif ($base eq "T") {
-		++$Ts;
-	}
-	elsif ($base eq "G") {
-		++$Gs;
-	}
-	elsif ($base eq "N") {
-		++$Ns;
-	}
-	else {
-		warn "Unexpected base found: $base Only A,C,T,G and N allowed\n";
-	}
-}
 
 
 
