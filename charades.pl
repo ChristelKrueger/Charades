@@ -11,11 +11,10 @@ my @files_to_analyse;
 
 	
 
-#files_to_analyse();
-#extract_100K_reads();
+files_to_analyse();
+extract_100K_reads();
 collect_base_composition_info();
-
-#guess_library();
+guess_library();
 
 
 
@@ -54,7 +53,7 @@ sub extract_100K_reads {
 	my @subfolders;										## Extracting the filenames if a path is given
 	system "mkdir charades_temp";
 	
-	warn "\nExtracting the first 100 000 reads\n";
+	warn "\nExtracting the first 100 000 reads from fastq file\n";
 	foreach my $file_to_analyse(@files_to_analyse) { 
 	
 		my $file_name;
@@ -78,11 +77,60 @@ sub extract_100K_reads {
 sub collect_base_composition_info {
 	
 	open (my $out, '>', "sequence_composition_stats.csv") or die "Cannot write to file: $!";
+	open (my $out_arff, '>', "sequence_composition_stats.arff") or die "Cannot write to file: $!";
 	print $out "file_name,pos1_A,pos1_C,pos1_T,pos1_G,pos2_A,pos2_C,pos2_T,pos2_G,pos3_A,pos3_C,pos3_T,pos3_G,pos4_A,pos4_C,pos4_T,pos4_G,pos8_A,pos8_C,pos8_T,",
 				"pos8_G,pos9_A,pos9_C,pos9_T,pos9_G,pos10_A,pos10_C,pos10_T,pos10_G,pos11_A,pos11_C,pos11_T,pos11_G,pos12_A,pos12_C,pos12_T,pos12_G,",
-				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G\n";
+				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G,method\n";
 	#print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
 	
+	print $out_arff "\@relation training_data_summary_sorted\n\n
+\@attribute pos1_A numeric
+\@attribute pos1_C numeric
+\@attribute pos1_T numeric
+\@attribute pos1_G numeric
+\@attribute pos2_A numeric
+\@attribute pos2_C numeric
+\@attribute pos2_T numeric
+\@attribute pos2_G numeric
+\@attribute pos3_A numeric
+\@attribute pos3_C numeric
+\@attribute pos3_T numeric
+\@attribute pos3_G numeric
+\@attribute pos4_A numeric
+\@attribute pos4_C numeric
+\@attribute pos4_T numeric
+\@attribute pos4_G numeric
+\@attribute pos8_A numeric
+\@attribute pos8_C numeric
+\@attribute pos8_T numeric
+\@attribute pos8_G numeric
+\@attribute pos9_A numeric
+\@attribute pos9_C numeric
+\@attribute pos9_T numeric
+\@attribute pos9_G numeric
+\@attribute pos10_A numeric
+\@attribute pos10_C numeric
+\@attribute pos10_T numeric
+\@attribute pos10_G numeric
+\@attribute pos11_A numeric
+\@attribute pos11_C numeric
+\@attribute pos11_T numeric
+\@attribute pos11_G numeric
+\@attribute pos12_A numeric
+\@attribute pos12_C numeric
+\@attribute pos12_T numeric
+\@attribute pos12_G numeric
+\@attribute pos20_A numeric
+\@attribute pos20_C numeric
+\@attribute pos20_T numeric
+\@attribute pos20_G numeric
+\@attribute pos30_A numeric
+\@attribute pos30_C numeric
+\@attribute pos30_T numeric
+\@attribute pos30_G numeric
+\@attribute method {NOMEseq,9N_PBAT,6N_PBAT,6N_sc,UMI_RRBS,Swift,WGBS,Truseq,Amplicon,RRBS,scNOME}\n\n
+\@data\n";
+
 	chdir ("./charades_temp") or die "Cannot move to temporary folder: $!";
 	
 	my @file_heads = <*.100K.fastq>;
@@ -215,21 +263,41 @@ sub collect_base_composition_info {
 		close $in or die;
 	}
 	
+	my @temp_files = (<*.100K.fastq>);
+	foreach my $temp_file(@temp_files) {
+		unlink $temp_file or die "Couldn't delete file: $!";
+	}
+	chdir ("..") or die "Cannot move away from temporary folder: $!";
+	rmdir ("charades_temp") or die "Cannot delete temporary folder: $!";
+	
 	foreach my $file (keys %info) {
-		print $out "$file,", $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentG},",",$info{$file} -> [0] -> {percentT},
-					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentG},",",$info{$file} -> [1] -> {percentT},
-					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentG},",",$info{$file} -> [2] -> {percentT},
-					",",$info{$file} -> [3] -> {percentA},",",$info{$file} -> [3] -> {percentC},",",$info{$file} -> [3] -> {percentG},",",$info{$file} -> [3] -> {percentT},
-					",",$info{$file} -> [4] -> {percentA},",",$info{$file} -> [4] -> {percentC},",",$info{$file} -> [4] -> {percentG},",",$info{$file} -> [4] -> {percentT},
-					",",$info{$file} -> [5] -> {percentA},",",$info{$file} -> [5] -> {percentC},",",$info{$file} -> [5] -> {percentG},",",$info{$file} -> [5] -> {percentT},
-					",",$info{$file} -> [6] -> {percentA},",",$info{$file} -> [6] -> {percentC},",",$info{$file} -> [6] -> {percentG},",",$info{$file} -> [6] -> {percentT},
-					",",$info{$file} -> [7] -> {percentA},",",$info{$file} -> [7] -> {percentC},",",$info{$file} -> [7] -> {percentG},",",$info{$file} -> [7] -> {percentT},
-					",",$info{$file} -> [8] -> {percentA},",",$info{$file} -> [8] -> {percentC},",",$info{$file} -> [8] -> {percentG},",",$info{$file} -> [8] -> {percentT},
-					",",$info{$file} -> [9] -> {percentA},",",$info{$file} -> [9] -> {percentC},",",$info{$file} -> [9] -> {percentG},",",$info{$file} -> [9] -> {percentT},
-					",",$info{$file} -> [10] -> {percentA},",",$info{$file} -> [10] -> {percentC},",",$info{$file} -> [10] -> {percentG},",",$info{$file} -> [10] -> {percentT}, "\n";
+		print $out $file, $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
+					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentT},",",$info{$file} -> [1] -> {percentG},
+					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentT},",",$info{$file} -> [2] -> {percentG},
+					",",$info{$file} -> [3] -> {percentA},",",$info{$file} -> [3] -> {percentC},",",$info{$file} -> [3] -> {percentT},",",$info{$file} -> [3] -> {percentG},
+					",",$info{$file} -> [4] -> {percentA},",",$info{$file} -> [4] -> {percentC},",",$info{$file} -> [4] -> {percentT},",",$info{$file} -> [4] -> {percentG},
+					",",$info{$file} -> [5] -> {percentA},",",$info{$file} -> [5] -> {percentC},",",$info{$file} -> [5] -> {percentT},",",$info{$file} -> [5] -> {percentG},
+					",",$info{$file} -> [6] -> {percentA},",",$info{$file} -> [6] -> {percentC},",",$info{$file} -> [6] -> {percentT},",",$info{$file} -> [6] -> {percentG},
+					",",$info{$file} -> [7] -> {percentA},",",$info{$file} -> [7] -> {percentC},",",$info{$file} -> [7] -> {percentT},",",$info{$file} -> [7] -> {percentG},
+					",",$info{$file} -> [8] -> {percentA},",",$info{$file} -> [8] -> {percentC},",",$info{$file} -> [8] -> {percentT},",",$info{$file} -> [8] -> {percentG},
+					",",$info{$file} -> [9] -> {percentA},",",$info{$file} -> [9] -> {percentC},",",$info{$file} -> [9] -> {percentT},",",$info{$file} -> [9] -> {percentG},
+					",",$info{$file} -> [10] -> {percentA},",",$info{$file} -> [10] -> {percentC},",",$info{$file} -> [10] -> {percentT},",",$info{$file} -> [10] -> {percentG}, ",?\n";
+		print $out_arff $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
+					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentT},",",$info{$file} -> [1] -> {percentG},
+					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentT},",",$info{$file} -> [2] -> {percentG},
+					",",$info{$file} -> [3] -> {percentA},",",$info{$file} -> [3] -> {percentC},",",$info{$file} -> [3] -> {percentT},",",$info{$file} -> [3] -> {percentG},
+					",",$info{$file} -> [4] -> {percentA},",",$info{$file} -> [4] -> {percentC},",",$info{$file} -> [4] -> {percentT},",",$info{$file} -> [4] -> {percentG},
+					",",$info{$file} -> [5] -> {percentA},",",$info{$file} -> [5] -> {percentC},",",$info{$file} -> [5] -> {percentT},",",$info{$file} -> [5] -> {percentG},
+					",",$info{$file} -> [6] -> {percentA},",",$info{$file} -> [6] -> {percentC},",",$info{$file} -> [6] -> {percentT},",",$info{$file} -> [6] -> {percentG},
+					",",$info{$file} -> [7] -> {percentA},",",$info{$file} -> [7] -> {percentC},",",$info{$file} -> [7] -> {percentT},",",$info{$file} -> [7] -> {percentG},
+					",",$info{$file} -> [8] -> {percentA},",",$info{$file} -> [8] -> {percentC},",",$info{$file} -> [8] -> {percentT},",",$info{$file} -> [8] -> {percentG},
+					",",$info{$file} -> [9] -> {percentA},",",$info{$file} -> [9] -> {percentC},",",$info{$file} -> [9] -> {percentT},",",$info{$file} -> [9] -> {percentG},
+					",",$info{$file} -> [10] -> {percentA},",",$info{$file} -> [10] -> {percentC},",",$info{$file} -> [10] -> {percentT},",",$info{$file} -> [10] -> {percentG}, ",?\n";
 	}
 	
 	close $out or die "Could not close output file:$!\n";
+	close $out_arff or die "Could not close output file:$!\n";
+	
 }	
 
 
@@ -238,38 +306,40 @@ sub collect_base_composition_info {
 
 sub guess_library {
 	
-	open (my $in, "training_data_summary.txt") or die "Couldn't open summary file: $!";
-	my $header_line = <$in>;
-	my %info;
+	warn "\n\nUsing Weka J48 tree classifier to predict library method\nTaining data from file training_data_summary_sorted.arff\n\n";
+	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
 	
-	## Create a data structure that contains all the info (hash of array of hashes)
-	while (<$in>) {
-		chomp;
-		my @sequence_composition = split (/\t/);
-		my ($name,$pos,$percentA,$percentC,$percentT,$percentG) = @sequence_composition[0,1,2,3,4,5];
-		#warn "$name\t$pos\t$percentA\t$percentC\t$percentT\t$percentG\n";
-		
-		my $position_info = 		{position => $pos,
-									 percentA => $percentA,
-									 percentC => $percentC,
-									 percentT => $percentT,
-									 percentG => $percentG};
-									 
-		push @{$info{$name}},$position_info;							 
-		
+	open (my $in,"weka.output") or die "Cannot open Weka output file: $!";
+	
+	while(<$in>) {
+		if ($_ =~ /\s+inst#/) {
+			my $header = $_;
+			while (<$in>) {
+				my $prediction = $_;
+				warn $prediction, "\n" if $debug;
+				last unless ($prediction =~ /\S+/);			## removes the empty line at the end of the file
+				my (undef,undef,undef, $class, $probabilities) = split(/\s+/,$prediction);
+				$class =~ s/^\d://;
+				my ($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) = split(/,/,$probabilities);
+							
+				warn "The predicted bisulfite library is $class \n\n",
+				"Probabilities for each potential class are\n",
+				"NOMEseq = ",$NOMEseq,"\n",
+				"9N_PBAT = ",$PBAT_9N,"\n",
+				"6N_PBAT = ",$PBAT_6N,"\n",
+				"6N_sc = ",$sc_6N,"\n",
+				"UMI_RRBS = ",$UMI_RRBS,"\n",
+				"Swift = ",$Swift,"\n",
+				"WGBS = ",$WGBS,"\n",
+				"Truseq = ",$Truseq,"\n",
+				"Amplicon = ",$Amplicon,"\n",
+				"RRBS = ",$RRBS,"\n",
+				"scNOME = ",$scNOME,"\n\n\n";
+				}
+		}
+	
+	
+	
+	
 	}
-	
-	#foreach my $file (keys %info) {
-		#warn "\n$file\n\tposition ", $info{$file} -> [0] -> {position}, "\tpercentA ", $info{$file} -> [0] -> {percentA}, "\n";
-		#warn "\tposition ", $info{$file} -> [2] -> {position}, "\tpercentA ", $info{$file} -> [2] -> {percentA}, "\n";
-		#warn "\tposition ", $info{$file} -> [5] -> {position}, "\tpercentA ", $info{$file} -> [5] -> {percentA}, "\n";
-	#}
-	
-	## Guess which library from sequence composition
-	
-	
-	
-	
-	close $in or die $!;
-	warn "\n\n";
 }
