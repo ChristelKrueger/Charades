@@ -1,16 +1,18 @@
 #!/usr/bin/perl
 use warnings;
 use strict;
+use Cwd;
+use Getopt::Long;
 
 # This script looks at the first 100 000 sequences from a bisulfite split fastq file and then
 # tries to find out which how the library was created. It will use sequence composition at different
 # positions in the sequence.
 
-my $debug = 0;
+my $debug;
 my @files_to_analyse;
-
+my $parent_directory = getcwd();
 	
-
+process_commandline();
 files_to_analyse();
 extract_100K_reads();
 collect_base_composition_info();
@@ -22,9 +24,37 @@ guess_library();
 ### SUBROUTINES ###
 ###################
 
+sub process_commandline {
 
-sub files_to_analyse {											## Finding out which files to analyse
+	my $help;
+	my $output_dir;
 	
+	my $command_line =  GetOptions ('help'                => \$help,
+									'output_dir=s'        => \$output_dir,
+									);
+	
+	
+	die "Please respecify command line options\n\n" unless ($command_line);
+	die "\nPlease specifiy gzipped fastq files\n\n" unless (@ARGV);
+
+    if ($help){
+	print_helpfile();
+	exit;
+    }
+}
+
+sub print_helpfile{
+	print "\n\nCharades will try and predict which bisulfite sequencing library preparation was used. It uses gzipped fastq files as input.\n\n";
+	print ">>> USAGE: ./charades.pl [options] filename(s) <<<\n\n";
+	print "--help\t\t\tprint this helpfile\n";
+	print "--output_dir [path]\tOutput directory, either relative or absolute. Output is written to the current directory if not\n\t\t\tspecified explicitly.\n\n";
+}
+
+
+sub files_to_analyse {											
+
+## Finding out which files to analyse
+
 	my @files = @ARGV;
 	my $length = @files;
 	warn "\nScanning $length input file(s).\n";
@@ -50,23 +80,23 @@ sub files_to_analyse {											## Finding out which files to analyse
 
 sub extract_100K_reads {
 
-	my @subfolders;										## Extracting the filenames if a path is given
+	my @subfolders;										
 	system "mkdir charades_temp";
 	
-	warn "\nExtracting the first 100 000 reads from fastq file\n";
+	warn "\nExtracting the first 100 000 reads from fastq file\n\n";
 	foreach my $file_to_analyse(@files_to_analyse) { 
 	
-		my $file_name;
-		if ($file_to_analyse =~ /\//g) {						## remove the path from the file name
+		my $file_name;											## Extracting the filenames if a path is given
+		while ($file_to_analyse =~ /\//g) {						
 			push @subfolders, pos$file_to_analyse;
 			warn "The last slash is found at ", $subfolders[-1], "\n" if $debug;
 		}
 		
 	
-		if (scalar @subfolders > 0) {							## if files are in the current directory						
+		if (scalar @subfolders > 0) {							## remove the path from the file name							
 			$file_name = substr($file_to_analyse, ($subfolders[-1]));
 		}
-		else {$file_name = $file_to_analyse};
+		else {$file_name = $file_to_analyse};					## if files are in the current directory
 		system "zcat $file_to_analyse | head -400000 > charades_temp/$file_name.100K.fastq";
 	}
 }
@@ -83,7 +113,7 @@ sub collect_base_composition_info {
 				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G,method\n";
 	#print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
 	
-	print $out_arff "\@relation training_data_summary_sorted\n\n
+	print $out_arff "\@relation training_data_summary_sorted\n
 \@attribute pos1_A numeric
 \@attribute pos1_C numeric
 \@attribute pos1_T numeric
@@ -150,7 +180,7 @@ sub collect_base_composition_info {
 
 		## Collecting all the reads from the fastq file.
 		my @reads;
-		warn "\nSummarising sequence composition for $file_name\n\n";
+		warn "Summarising sequence composition for $file_name\n";
 
 		while (<$in>) {
 	
@@ -194,9 +224,7 @@ sub collect_base_composition_info {
 		foreach my $interesting_position(@interesting_positions) {
 			foreach my $read(@reads) {
 				$read = uc($read);
-				my @bases = split(//,$read);
-				my $base = $bases[$interesting_position -1];
-				#warn "The base at position $interesting_position is a $base\n";
+				my $base = substr($read, $interesting_position -1,1);
 		
 				unless ($base) {
 					warn "A read in $file_head is shorter than expected with only ", length($read), " bases. 
@@ -240,7 +268,7 @@ sub collect_base_composition_info {
 				warn "WARNING: There are more than 5% Ns at position $interesting_position.\n";
 			}
 			
-			warn "Percentages for A,C,T,G at position $interesting_position are $percentA, $percentC, $percentG, $percentT\n";
+			warn "Percentages for A,C,T,G at position $interesting_position are $percentA, $percentC, $percentG, $percentT\n" if $debug;
 			#print $out "$file_name\t$interesting_position\t$percentA\t$percentC\t$percentT\t$percentG\t$percentN\n";
 			
 			## Generating a data structure containing the composition info
@@ -271,7 +299,7 @@ sub collect_base_composition_info {
 	rmdir ("charades_temp") or die "Cannot delete temporary folder: $!";
 	
 	foreach my $file (keys %info) {
-		print $out $file, $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
+		print $out $file, ",", $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
 					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentT},",",$info{$file} -> [1] -> {percentG},
 					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentT},",",$info{$file} -> [2] -> {percentG},
 					",",$info{$file} -> [3] -> {percentA},",",$info{$file} -> [3] -> {percentC},",",$info{$file} -> [3] -> {percentT},",",$info{$file} -> [3] -> {percentG},
@@ -306,14 +334,16 @@ sub collect_base_composition_info {
 
 sub guess_library {
 	
-	warn "\n\nUsing Weka J48 tree classifier to predict library method\nTaining data from file training_data_summary_sorted.arff\n\n";
-	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
+	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\nTaining data from file training_data_summary_sorted.arff\n\n";
+	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
+	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
 	
 	open (my $in,"weka.output") or die "Cannot open Weka output file: $!";
 	
 	while(<$in>) {
 		if ($_ =~ /\s+inst#/) {
 			my $header = $_;
+			my $i = 0;
 			while (<$in>) {
 				my $prediction = $_;
 				warn $prediction, "\n" if $debug;
@@ -322,7 +352,7 @@ sub guess_library {
 				$class =~ s/^\d://;
 				my ($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) = split(/,/,$probabilities);
 							
-				warn "The predicted bisulfite library is $class \n\n",
+				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n",
 				"Probabilities for each potential class are\n",
 				"NOMEseq = ",$NOMEseq,"\n",
 				"9N_PBAT = ",$PBAT_9N,"\n",
@@ -335,6 +365,7 @@ sub guess_library {
 				"Amplicon = ",$Amplicon,"\n",
 				"RRBS = ",$RRBS,"\n",
 				"scNOME = ",$scNOME,"\n\n\n";
+				++$i;
 				}
 		}
 	
