@@ -10,7 +10,8 @@ use Getopt::Long;
 
 my $debug;
 my @files_to_analyse;
-my $parent_directory = getcwd();
+my ($output_dir) = process_commandline();
+
 	
 process_commandline();
 files_to_analyse();
@@ -30,23 +31,69 @@ sub process_commandline {
 	my $output_dir;
 	
 	my $command_line =  GetOptions ('help'                => \$help,
-									'output_dir=s'        => \$output_dir,
+									'o|output_dir=s'        => \$output_dir,
 									);
 	
 	
 	die "Please respecify command line options\n\n" unless ($command_line);
-	die "\nPlease specifiy gzipped fastq files\n\n" unless (@ARGV);
+	
 
     if ($help){
 	print_helpfile();
 	exit;
     }
+	
+	die "\nPlease specifiy gzipped fastq files\n\n" unless (@ARGV);
+	
+	### PARENT DIRECTORY
+    my $parent_dir = getcwd();
+    unless ($parent_dir =~ /\/$/){    ## making parent directory end in a slash
+	$parent_dir =~ s/$/\//;
+    }
+
+    ### OUTPUT DIRECTORY
+    if (defined $output_dir){
+		unless ($output_dir eq ''){
+			unless ($output_dir =~ /\/$/){     ## making output directory end in a slash
+			$output_dir =~ s/$/\//;
+			}
+	    
+	    if (chdir $output_dir){
+			$output_dir = getcwd(); #  making the path absolute
+			unless ($output_dir =~ /\/$/){
+				$output_dir =~ s/$/\//;
+			}
+	    }
+	    
+		else {
+			mkdir $output_dir or die "Unable to create directory $output_dir $!\n";
+			warn "\nCreating output directory $output_dir \n\n"; sleep(1);
+			chdir $output_dir or die "Failed to move to $output_dir\n";
+			$output_dir = getcwd(); #  making the path absolute
+			unless ($output_dir =~ /\/$/){
+				$output_dir =~ s/$/\//;
+			}
+	    }
+	    warn "\nOutput will be written into the directory: $output_dir\n";
+		}
+    }
+    else {
+		$output_dir = '';
+    }
+
+    # Changing back to parent directory
+    chdir $parent_dir or die "Failed to move to $parent_dir\n";
+	
+	return $output_dir;
+	
+	
+	
 }
 
 sub print_helpfile{
 	print "\n\nCharades will try and predict which bisulfite sequencing library preparation was used. It uses gzipped fastq files as input.\n\n";
 	print ">>> USAGE: ./charades.pl [options] filename(s) <<<\n\n";
-	print "--help\t\t\tprint this helpfile\n";
+	print "\nOptions:\n\n";
 	print "--output_dir [path]\tOutput directory, either relative or absolute. Output is written to the current directory if not\n\t\t\tspecified explicitly.\n\n";
 }
 
@@ -56,14 +103,15 @@ sub files_to_analyse {
 ## Finding out which files to analyse
 
 	my @files = @ARGV;
+	unless (@files) {
+		print "Please provide one or more fastq.gz files for analysis\n\n";
+	}
 	my $length = @files;
 	warn "\nScanning $length input file(s).\n";
 	warn join("\n",@files)."\n" if $debug;
 
 
 	foreach my $file(@files) {
-	
-		
 	
 		if ($file =~ /R1/) {
 			push @files_to_analyse, $file;
@@ -84,6 +132,8 @@ sub extract_100K_reads {
 	system "mkdir charades_temp";
 	
 	warn "\nExtracting the first 100 000 reads from fastq file\n\n";
+	
+
 	foreach my $file_to_analyse(@files_to_analyse) { 
 	
 		my $file_name;											## Extracting the filenames if a path is given
@@ -106,8 +156,8 @@ sub extract_100K_reads {
 
 sub collect_base_composition_info {
 	
-	open (my $out, '>', "sequence_composition_stats.csv") or die "Cannot write to file: $!";
-	open (my $out_arff, '>', "sequence_composition_stats.arff") or die "Cannot write to file: $!";
+	open (my $out, '>', "${output_dir}sequence_composition_stats.csv") or die "Cannot write to file: $!";
+	open (my $out_arff, '>', "${output_dir}sequence_composition_stats.arff") or die "Cannot write to file: $!";
 	print $out "file_name,pos1_A,pos1_C,pos1_T,pos1_G,pos2_A,pos2_C,pos2_T,pos2_G,pos3_A,pos3_C,pos3_T,pos3_G,pos4_A,pos4_C,pos4_T,pos4_G,pos8_A,pos8_C,pos8_T,",
 				"pos8_G,pos9_A,pos9_C,pos9_T,pos9_G,pos10_A,pos10_C,pos10_T,pos10_G,pos11_A,pos11_C,pos11_T,pos11_G,pos12_A,pos12_C,pos12_T,pos12_G,",
 				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G,method\n";
@@ -190,12 +240,12 @@ sub collect_base_composition_info {
 				next FILE;
 			}
 			my $sequence = <$in>;
-			unless ($header =~ /A|T|C|G|N/) {
+			unless ($sequence =~ /^[A|T|C|G|N]*$/) {
 				warn "Sequence in $file_head contains bases other than A, T, C, G, N. Skipping.\n";
 				next FILE;
 			}
 			my $plusline = <$in>;
-			unless ($header =~ /^@/) {
+			unless ($plusline =~ /^\+/) {
 				warn "$file_head does not look like it's in fastq format. Skipping.\n";
 				next FILE;
 			}
@@ -203,7 +253,7 @@ sub collect_base_composition_info {
 			last unless ($quality_scores);
 			chomp $sequence;
 			$sequence = uc($sequence);
-			if ($sequence =~ /A|T|C|G|N/) {
+			if ($sequence =~ /^[A|T|C|G|N]*$/) {
 				push @reads, $sequence;
 				#warn "$reads[$#reads]\n";
 			}
@@ -335,12 +385,18 @@ sub collect_base_composition_info {
 sub guess_library {
 	
 	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\nTaining data from file training_data_summary_sorted.arff\n\n";
-	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
-	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > weka.output";
+	unless (-e "training_data_summary_sorted.arff") {
+		die "Couldn't find file >> training_data_summary_sorted.arff <<. Please add it to the same directory as charades.pl.\n\n\n";
+	}
+	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T ${output_dir}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
 	
-	open (my $in,"weka.output") or die "Cannot open Weka output file: $!";
+	open (my $in,"${output_dir}weka.output") or die "Cannot open Weka output file: $!";
 	
 	while(<$in>) {
+		unless ($_) {
+			warn "No sequence composition data was collected. Exiting.\n";
+		}
 		if ($_ =~ /\s+inst#/) {
 			my $header = $_;
 			my $i = 0;
@@ -351,22 +407,33 @@ sub guess_library {
 				my (undef,undef,undef, $class, $probabilities) = split(/\s+/,$prediction);
 				$class =~ s/^\d://;
 				my ($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) = split(/,/,$probabilities);
+				
+				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n";
 							
-				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n",
-				"Probabilities for each potential class are\n",
-				"NOMEseq = ",$NOMEseq,"\n",
-				"9N_PBAT = ",$PBAT_9N,"\n",
-				"6N_PBAT = ",$PBAT_6N,"\n",
-				"6N_sc = ",$sc_6N,"\n",
-				"UMI_RRBS = ",$UMI_RRBS,"\n",
-				"Swift = ",$Swift,"\n",
-				"WGBS = ",$WGBS,"\n",
-				"Truseq = ",$Truseq,"\n",
-				"Amplicon = ",$Amplicon,"\n",
-				"RRBS = ",$RRBS,"\n",
-				"scNOME = ",$scNOME,"\n\n\n";
+				#warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n",
+				#"Probabilities for each potential class are\n",
+				#"NOMEseq = ",$NOMEseq,"\n",
+				#"9N_PBAT = ",$PBAT_9N,"\n",
+				#"6N_PBAT = ",$PBAT_6N,"\n",
+				#"6N_sc = ",$sc_6N,"\n",
+				#"UMI_RRBS = ",$UMI_RRBS,"\n",
+				#"Swift = ",$Swift,"\n",
+				#"WGBS = ",$WGBS,"\n",
+				#"Truseq = ",$Truseq,"\n",
+				#"Amplicon = ",$Amplicon,"\n",
+				#"RRBS = ",$RRBS,"\n",
+				#"scNOME = ",$scNOME,"\n\n\n";
 				++$i;
+				
+				## Collect top two class probabilities
+				
+				#my @methods = ("NOMEseq", "9N_PBAT", "6N_PBAT", "6N_sc", "UMI_RRBS", "Swift", "WGBS", "Truseq", "Amplicon", "RRBS", "scNOME");
+							
+				#my %probs;
+				#$probs{$methods[0]} = $NOMEseq;
+				#print $probs{$methods[0]} -> $NOMEseq, "\n";
 				}
+				
 		}
 	
 	
