@@ -10,10 +10,9 @@ use Getopt::Long;
 
 my $debug;
 my @files_to_analyse;
-my ($output_dir) = process_commandline();
+my ($output_dir, $parent_dir, $project) = process_commandline();
 
-	
-process_commandline();
+
 files_to_analyse();
 extract_100K_reads();
 collect_base_composition_info();
@@ -29,9 +28,11 @@ sub process_commandline {
 
 	my $help;
 	my $output_dir;
+	my $project;
 	
 	my $command_line =  GetOptions ('help'                => \$help,
-									'o|output_dir=s'        => \$output_dir,
+									'o|output_dir=s'      => \$output_dir,
+									'p|project=s'		  => \$project,
 									);
 	
 	
@@ -42,13 +43,13 @@ sub process_commandline {
 	print_helpfile();
 	exit;
     }
-	
+		
 	die "\nPlease specifiy gzipped fastq files\n\n" unless (@ARGV);
 	
 	### PARENT DIRECTORY
     my $parent_dir = getcwd();
     unless ($parent_dir =~ /\/$/){    ## making parent directory end in a slash
-	$parent_dir =~ s/$/\//;
+		$parent_dir =~ s/$/\//;
     }
 
     ### OUTPUT DIRECTORY
@@ -67,7 +68,7 @@ sub process_commandline {
 	    
 		else {
 			mkdir $output_dir or die "Unable to create directory $output_dir $!\n";
-			warn "\nCreating output directory $output_dir \n\n"; sleep(1);
+			warn "\nCreating output directory $output_dir \n\n"; 
 			chdir $output_dir or die "Failed to move to $output_dir\n";
 			$output_dir = getcwd(); #  making the path absolute
 			unless ($output_dir =~ /\/$/){
@@ -84,7 +85,18 @@ sub process_commandline {
     # Changing back to parent directory
     chdir $parent_dir or die "Failed to move to $parent_dir\n";
 	
-	return $output_dir;
+	
+	### PROJECT NAME
+	if (defined $project) {
+		$project = $project.".";
+	}
+	else {
+		warn "\nNo project name defined, using generic output file names.\n";
+		$project = '';
+	}
+	
+	
+	return ($output_dir, $parent_dir, $project);
 	
 	
 	
@@ -129,7 +141,7 @@ sub files_to_analyse {
 sub extract_100K_reads {
 
 	my @subfolders;										
-	system "mkdir charades_temp";
+	mkdir "${output_dir}charades_temp" or die "Could not create temporary directory: $!";
 	
 	warn "\nExtracting the first 100 000 reads from fastq file\n\n";
 	
@@ -147,7 +159,7 @@ sub extract_100K_reads {
 			$file_name = substr($file_to_analyse, ($subfolders[-1]));
 		}
 		else {$file_name = $file_to_analyse};					## if files are in the current directory
-		system "zcat $file_to_analyse | head -400000 > charades_temp/$file_name.100K.fastq";
+		system "zcat $file_to_analyse | head -400000 > ${output_dir}charades_temp/$file_name.100K.fastq";
 	}
 }
 
@@ -156,8 +168,8 @@ sub extract_100K_reads {
 
 sub collect_base_composition_info {
 	
-	open (my $out, '>', "${output_dir}sequence_composition_stats.csv") or die "Cannot write to file: $!";
-	open (my $out_arff, '>', "${output_dir}sequence_composition_stats.arff") or die "Cannot write to file: $!";
+	open (my $out, '>', "${output_dir}${project}sequence_composition_stats.csv") or die "Cannot write to file: $!";
+	open (my $out_arff, '>', "${output_dir}${project}sequence_composition_stats.arff") or die "Cannot write to file: $!";
 	print $out "file_name,pos1_A,pos1_C,pos1_T,pos1_G,pos2_A,pos2_C,pos2_T,pos2_G,pos3_A,pos3_C,pos3_T,pos3_G,pos4_A,pos4_C,pos4_T,pos4_G,pos8_A,pos8_C,pos8_T,",
 				"pos8_G,pos9_A,pos9_C,pos9_T,pos9_G,pos10_A,pos10_C,pos10_T,pos10_G,pos11_A,pos11_C,pos11_T,pos11_G,pos12_A,pos12_C,pos12_T,pos12_G,",
 				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G,method\n";
@@ -211,12 +223,15 @@ sub collect_base_composition_info {
 \@attribute method {NOMEseq,9N_PBAT,6N_PBAT,6N_sc,UMI_RRBS,Swift,WGBS,Truseq,Amplicon,RRBS,scNOME}\n\n
 \@data\n";
 
-	chdir ("./charades_temp") or die "Cannot move to temporary folder: $!";
+	chdir "${output_dir}charades_temp" or die "Cannot move to temporary folder: $!";
 	
 	my @file_heads = <*.100K.fastq>;
 	my %info;			## This is the data structure that contains all the base composition info (hash of array of hashes)
 
-
+	unless (@file_heads) {
+		die "Cannot find files for first 100 000 reads.Exiting.\n";
+	}
+	
 	FILE: foreach my $file_head(@file_heads) {
 		my $file_name = $file_head;
 		my $remove = substr($file_name,-11);
@@ -345,8 +360,8 @@ sub collect_base_composition_info {
 	foreach my $temp_file(@temp_files) {
 		unlink $temp_file or die "Couldn't delete file: $!";
 	}
-	chdir ("..") or die "Cannot move away from temporary folder: $!";
-	rmdir ("charades_temp") or die "Cannot delete temporary folder: $!";
+	chdir $parent_dir or die "Cannot move away from temporary folder: $!";
+	rmdir ("${output_dir}charades_temp") or die "Cannot delete temporary folder: $!";
 	
 	foreach my $file (keys %info) {
 		print $out $file, ",", $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
@@ -389,9 +404,13 @@ sub guess_library {
 		die "Couldn't find file >> training_data_summary_sorted.arff <<. Please add it to the same directory as charades.pl.\n\n\n";
 	}
 	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
-	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T ${output_dir}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T ${output_dir}${project}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
 	
 	open (my $in,"${output_dir}weka.output") or die "Cannot open Weka output file: $!";
+	open (my $out, '>', "${output_dir}${project}class.probabilities.txt") or die "Cannot create class probability file: $!";
+	
+	## making the header for the class probability file which is then to be used for the graphical representation
+	print $out "sample\tNOMEseq\t9N_PBAT\t6N_PBAT\tsc_6N\tUMI_RRBS\tSwift\tWGBS\tTruseq\tAmplicon\tRRBS\tscNOME\n";
 	
 	while(<$in>) {
 		unless ($_) {
@@ -400,6 +419,7 @@ sub guess_library {
 		if ($_ =~ /\s+inst#/) {
 			my $header = $_;
 			my $i = 0;
+			
 			while (<$in>) {
 				my $prediction = $_;
 				warn $prediction, "\n" if $debug;
@@ -408,8 +428,17 @@ sub guess_library {
 				$class =~ s/^\d://;
 				my ($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) = split(/,/,$probabilities);
 				
-				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n";
-							
+				# removing the star from the predicted class to make them all numeric
+				foreach my $probability($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) {
+					$probability =~ s/\*//;
+				}
+				
+				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n";
+				print $out "$files_to_analyse[$i]\t$NOMEseq\t$PBAT_9N\t$PBAT_6N\t$sc_6N\t$UMI_RRBS\t$Swift\t$WGBS\t$Truseq\t$Amplicon\t$RRBS\t$scNOME\n";
+
+				### The commented out sections print the probabilities for each class to STOUT, either as such or from a hash. I'll leave these in
+				### for now to see what my preferred option is to process the information downstream
+					
 				#warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n\n",
 				#"Probabilities for each potential class are\n",
 				#"NOMEseq = ",$NOMEseq,"\n",
@@ -427,17 +456,31 @@ sub guess_library {
 				
 				## Collect top two class probabilities
 				
-				#my @methods = ("NOMEseq", "9N_PBAT", "6N_PBAT", "6N_sc", "UMI_RRBS", "Swift", "WGBS", "Truseq", "Amplicon", "RRBS", "scNOME");
-							
-				#my %probs;
-				#$probs{$methods[0]} = $NOMEseq;
-				#print $probs{$methods[0]} -> $NOMEseq, "\n";
-				}
 				
+				#my %probs = (
+				#				NOMEseq => $NOMEseq,
+				#				PBAT_9N => $PBAT_9N,
+				#				PBAT_6N => $PBAT_6N,
+				#				sc_6N => $sc_6N,
+				#				UMI_RRBS => $UMI_RRBS,
+				#				Swift => $Swift,
+				#				WGBS => $WGBS,
+				#				Truseq => $Truseq,
+				#				Amplicon => $Amplicon,
+				#				RRBS => $RRBS,
+				#				scNOME => $scNOME,
+				#				);
+								
+				
+				#foreach my $method (sort {$probs{$b} <=> $probs{$a}} keys %probs) {
+				#	print "$method\t $probs{$method}\n";
+				#}
+				#print "\n\n";				
+					
+			}
+			
 		}
-	
-	
-	
-	
 	}
+	close $in;
+	close $out or die "Could not close filehandle for class probabilities";
 }
