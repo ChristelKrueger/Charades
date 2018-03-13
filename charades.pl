@@ -10,13 +10,14 @@ use Getopt::Long;
 
 my $debug;
 my @files_to_analyse;
-my ($output_dir, $parent_dir, $project) = process_commandline();
+my ($output_dir, $parent_dir, $project,$r_path) = process_commandline();
 
 
 files_to_analyse();
 extract_100K_reads();
 collect_base_composition_info();
 guess_library();
+draw_graph();
 
 
 
@@ -29,10 +30,12 @@ sub process_commandline {
 	my $help;
 	my $output_dir;
 	my $project;
+	my $r_path = "R";
 	
 	my $command_line =  GetOptions ('help'                => \$help,
 									'o|output_dir=s'      => \$output_dir,
 									'p|project=s'		  => \$project,
+									'r_path=s'			  => \$r_path,
 									);
 	
 	
@@ -96,7 +99,7 @@ sub process_commandline {
 	}
 	
 	
-	return ($output_dir, $parent_dir, $project);
+	return ($output_dir, $parent_dir, $project,$r_path);
 	
 	
 	
@@ -106,7 +109,8 @@ sub print_helpfile{
 	print "\n\nCharades will try and predict which bisulfite sequencing library preparation was used. It uses gzipped fastq files as input.\n\n";
 	print ">>> USAGE: ./charades.pl [options] filename(s) <<<\n\n";
 	print "\nOptions:\n\n";
-	print "--output_dir [path]\tOutput directory, either relative or absolute. Output is written to the current directory if not\n\t\t\tspecified explicitly.\n\n";
+	print "--output_dir / -o [path]\tOutput directory, either relative or absolute. If not specified, output is written to the current directory.\n";
+	print "--project / -p [project name]\tSpecifies a project name for all tested samples which will be added to the output file names.\n\n\n";
 }
 
 
@@ -484,3 +488,79 @@ sub guess_library {
 	close $in;
 	close $out or die "Could not close filehandle for class probabilities";
 }
+
+
+
+sub draw_graph {
+
+	my $infile = "${output_dir}${project}class.probabilities.txt";
+	my $graph = "${project}probabilities.png";
+	
+	if ($output_dir eq "") {
+		$output_dir = getcwd();
+	}
+	
+	my $r_script = <<"END_SCRIPT";
+	
+		directory <- "$output_dir";
+		file <- "$infile";
+		graph <- "$graph";
+		
+		setwd(directory)
+
+		read.delim(file,stringsAsFactors = FALSE) -> class.probabilities
+		row.names(class.probabilities) <- class.probabilities[,1]
+		class.probabilities[2:ncol(class.probabilities)] -> class.probabilities
+		as.matrix(t(class.probabilities)) -> class.probabilities
+
+		library(RColorBrewer)
+		cols = brewer.pal(11,"Paired")
+		data.frame(methods = row.names(class.probabilities), colours = cols)
+		
+		png(filename = "$graph", width = 600, height = 480)
+
+		par(oma = c(1,1,1,9), mar = c(5,10,4,3))
+
+		barplot(class.probabilities,
+			horiz = T,
+			col = cols,
+			main = "Probabilities for each method",
+			las = 1,
+			xlab = "probability"
+			)
+
+		par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
+		plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n")
+
+		legend ("topright",
+			legend = row.names(class.probabilities),
+			fill = cols,
+			xpd = T,
+			inset = c(0.08,0.2)
+			)
+
+		dev.off()
+		
+END_SCRIPT
+		
+		warn "The path to R is $r_path\n" if $debug;
+		
+		open (my $in, "| \"$r_path\" --no-save > /dev/null 2>&1") or die "Can't open pipe to '$r_path'  - do you need to set an rpath?";
+
+		print $in $r_script;
+
+		close $in or die "Can't write to '$r_path' pipe  - do you need to set an rpath?";
+
+		
+}
+
+
+
+
+
+
+
+
+
+
+
