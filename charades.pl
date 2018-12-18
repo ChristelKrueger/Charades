@@ -136,6 +136,7 @@ sub files_to_analyse {
 			push @files_to_analyse, $file;
 		}
 	}
+	@files_to_analyse = sort(@files_to_analyse);
 	warn "\nFiles selected for analysis are\n", join("\n",@files_to_analyse),"\n\n\n";
 }
 
@@ -147,22 +148,13 @@ sub extract_100K_reads {
 	my @subfolders;										
 	mkdir "${output_dir}charades_temp" or die "Could not create temporary directory: $!";
 	
-	warn "\nExtracting the first 100 000 reads from fastq file\n\n";
-	
+	warn "\nExtracting the first 100 000 reads from fastq files\n\n";
+	my $file_name;
 
 	foreach my $file_to_analyse(@files_to_analyse) { 
 	
-		my $file_name;											## Extracting the filenames if a path is given
-		while ($file_to_analyse =~ /\//g) {						
-			push @subfolders, pos$file_to_analyse;
-			warn "The last slash is found at ", $subfolders[-1], "\n" if $debug;
-		}
-		
-	
-		if (scalar @subfolders > 0) {							## remove the path from the file name							
-			$file_name = substr($file_to_analyse, ($subfolders[-1]));
-		}
-		else {$file_name = $file_to_analyse};					## if files are in the current directory
+		$file_name = $file_to_analyse;
+		$file_name =~ s/^.*\///;
 		system "zcat $file_to_analyse | head -400000 > ${output_dir}charades_temp/$file_name.100K.fastq";
 	}
 }
@@ -179,7 +171,7 @@ sub collect_base_composition_info {
 				"pos20_A,pos20_C,pos20_T,pos20_G,pos30_A,pos30_C,pos30_T,pos30_G,method\n";
 	#print $out "file_name\tposition\tpercentA\tpercentC\tpercentT\tpercentG\tpercentN\n";
 	
-	print $out_arff "\@relation training_data_summary_sorted\n
+	print $out_arff "\@relation base_signature\n
 \@attribute pos1_A numeric
 \@attribute pos1_C numeric
 \@attribute pos1_T numeric
@@ -224,7 +216,7 @@ sub collect_base_composition_info {
 \@attribute pos30_C numeric
 \@attribute pos30_T numeric
 \@attribute pos30_G numeric
-\@attribute method {NOMEseq,9N_PBAT,6N_PBAT,6N_sc,UMI_RRBS,Swift,WGBS,Truseq,Amplicon,RRBS,scNOME}\n\n
+\@attribute method {Swift,6N_PBAT,6N_sc,9N_sc,WGBS,RRBS,scNOME,UMI_RRBS,9N_PBAT,Amplicon,NOMEseq,Truseq}\n\n
 \@data\n";
 
 	chdir "${output_dir}charades_temp" or die "Cannot move to temporary folder: $!";
@@ -238,8 +230,10 @@ sub collect_base_composition_info {
 	
 	FILE: foreach my $file_head(@file_heads) {
 		my $file_name = $file_head;
+		warn $file_name, "\n" if $debug;
 		my $remove = substr($file_name,-11);
 		$file_name =~ s/$remove//;
+		warn $file_name, "\n" if $debug;
 
 
 		## Read sequences in the fastq file
@@ -367,7 +361,7 @@ sub collect_base_composition_info {
 	chdir $parent_dir or die "Cannot move away from temporary folder: $!";
 	rmdir ("${output_dir}charades_temp") or die "Cannot delete temporary folder: $!";
 	
-	foreach my $file (keys %info) {
+	foreach my $file (sort keys %info) {
 		print $out $file, ",", $info{$file} -> [0] -> {percentA}, ",",$info{$file} -> [0] -> {percentC},",",$info{$file} -> [0] -> {percentT},",",$info{$file} -> [0] -> {percentG},
 					",",$info{$file} -> [1] -> {percentA},",",$info{$file} -> [1] -> {percentC},",",$info{$file} -> [1] -> {percentT},",",$info{$file} -> [1] -> {percentG},
 					",",$info{$file} -> [2] -> {percentA},",",$info{$file} -> [2] -> {percentC},",",$info{$file} -> [2] -> {percentT},",",$info{$file} -> [2] -> {percentG},
@@ -403,18 +397,18 @@ sub collect_base_composition_info {
 
 sub guess_library {
 	
-	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\nTaining data from file training_data_summary_sorted.arff\n\n";
-	unless (-e "training_data_summary_sorted.arff") {
-		die "Couldn't find file >> training_data_summary_sorted.arff <<. Please add it to the same directory as charades.pl.\n\n\n";
+	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\nTaining data from file training_data_20181211.arff\n\n";
+	unless (-e "training_data_20181211.arff") {
+		die "Couldn't find file >> training_data_20181211.arff <<. Please add it to the same directory as charades.pl.\n\n\n";
 	}
-	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_summary_sorted.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
-	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 3 -t training_data_summary_sorted.arff -T ${output_dir}${project}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_20181210.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 1 -t training_data_20181211.arff -T ${output_dir}${project}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
 	
 	open (my $in,"${output_dir}weka.output") or die "Cannot open Weka output file: $!";
 	open (my $out, '>', "${output_dir}${project}class.probabilities.txt") or die "Cannot create class probability file: $!";
 	
 	## making the header for the class probability file which is then to be used for the graphical representation
-	print $out "sample\tNOMEseq\t9N_PBAT\t6N_PBAT\tsc_6N\tUMI_RRBS\tSwift\tWGBS\tTruseq\tAmplicon\tRRBS\tscNOME\n";
+	print $out "sample\tSwift\tPBAT_6N\tsc_6N\tsc_9N\tWGBS\tRRBS\tscNOME\tUMI_RRBS\tPBAT_9N\tAmplicon\tNOMEseq\tTruseq\n";
 	
 	while(<$in>) {
 		unless ($_) {
@@ -423,22 +417,30 @@ sub guess_library {
 		if ($_ =~ /\s+inst#/) {
 			my $header = $_;
 			my $i = 0;
+			my $sample;
 			
 			while (<$in>) {
 				my $prediction = $_;
 				warn $prediction, "\n" if $debug;
 				last unless ($prediction =~ /\S+/);			## removes the empty line at the end of the file
 				my (undef,undef,undef, $class, $probabilities) = split(/\s+/,$prediction);
-				$class =~ s/^\d://;
-				my ($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) = split(/,/,$probabilities);
+				$class =~ s/^\d+://;
+				my ($Swift,$PBAT_6N,$sc_6N,$sc_9N,$WGBS,$RRBS,$scNOME,$UMI_RRBS,$PBAT_9N,$Amplicon,$NOMEseq,$Truseq) = split(/,/,$probabilities);
+				#{Swift,6N_PBAT,6N_sc,9N_sc,WGBS,RRBS,scNOME,UMI_RRBS,9N_PBAT,Amplicon,NOMEseq,Truseq}		
+				# THIS NEEDS TO BE THE SAME ORDER AS THE CLASS ATTRIBUTE IN THE ARFF FILE!!
 				
 				# removing the star from the predicted class to make them all numeric
-				foreach my $probability($NOMEseq,$PBAT_9N,$PBAT_6N,$sc_6N,$UMI_RRBS,$Swift,$WGBS,$Truseq,$Amplicon,$RRBS,$scNOME) {
+				foreach my $probability($Swift,$PBAT_6N,$sc_6N,$sc_9N,$WGBS,$RRBS,$scNOME,$UMI_RRBS,$PBAT_9N,$Amplicon,$NOMEseq,$Truseq) {
 					$probability =~ s/\*//;
 				}
 				
-				warn "The predicted bisulfite library for $files_to_analyse[$i] is $class \n";
-				print $out "$files_to_analyse[$i]\t$NOMEseq\t$PBAT_9N\t$PBAT_6N\t$sc_6N\t$UMI_RRBS\t$Swift\t$WGBS\t$Truseq\t$Amplicon\t$RRBS\t$scNOME\n";
+				
+				# remove the path from the file name
+				$sample = $files_to_analyse[$i];
+				$sample =~ s/^.*\///;
+				
+				warn "The predicted bisulfite library for $sample is $class \n";
+				print $out "$sample\t$Swift\t$PBAT_6N\t$sc_6N\t$sc_9N\t$WGBS\t$RRBS\t$scNOME\t$UMI_RRBS\t$PBAT_9N\t$Amplicon\t$NOMEseq\t$Truseq\n";
 
 				### The commented out sections print the probabilities for each class to STOUT, either as such or from a hash. I'll leave these in
 				### for now to see what my preferred option is to process the information downstream
@@ -511,15 +513,15 @@ sub draw_graph {
 		read.delim(file,stringsAsFactors = FALSE) -> class.probabilities
 		row.names(class.probabilities) <- class.probabilities[,1]
 		class.probabilities[2:ncol(class.probabilities)] -> class.probabilities
+		substr(row.names(class.probabilities),1,20) -> row.names(class.probabilities)
 		as.matrix(t(class.probabilities)) -> class.probabilities
 
 		library(RColorBrewer)
-		cols = brewer.pal(11,"Paired")
-		data.frame(methods = row.names(class.probabilities), colours = cols)
+		cols = brewer.pal(12,"Paired")
 		
-		png(filename = "$graph", width = 600, height = 480)
+		png(filename = "$graph", width = 800, height = max(400,60 + (20*ncol(class.probabilities))))
 
-		par(oma = c(1,1,1,9), mar = c(5,10,4,3))
+		par(oma = c(1,1,1,9), mar = c(5,12,4,3))
 
 		barplot(class.probabilities,
 			horiz = T,
@@ -549,7 +551,7 @@ END_SCRIPT
 
 		print $in $r_script;
 
-		close $in or die "Can't write to '$r_path' pipe  - do you need to set an rpath?";
+		close $in or die "Can't write to '$r_path' pipe - Do your file names start with 20 common characters?";
 
 		
 }
