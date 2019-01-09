@@ -29,6 +29,8 @@ Charades will report the predicted library directly in the console, but it will 
 - the training data file in the same directory as charades itself
 - files to analyse in fastq.gz format
 
+<img src="images/examples_heat_map.png" width="500" height="500">
+
 ## Disclaimer
 This is a first working version of Charades which I'm sure has many teething problems. Please report any issues on github or to christel.krueger@babraham.ac.uk.
 
