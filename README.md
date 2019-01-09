@@ -1,4 +1,4 @@
-# Charades
+![Charades logo](images/charades_logo.png)
 
 ## Overview
 
