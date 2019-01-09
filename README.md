@@ -1,5 +1,6 @@
 
 <img src="images/charades_logo.png" width="500" height="200">
+
 ## Overview
 
 Different methods to generate bisulfite sequencing libraries result in sequencing data that require different downstream processing. For example, there are stranded and non-stranded libraries, reads may start with a different number of random bases that need to be removed or reads may only start at a restriction site. It is therefore necessary to know the library type before starting processing.
