@@ -1,4 +1,4 @@
-![Charades logo](images/charades_logo_plain.svg)
+![Charades logo](images/charades_logo.png)
 
 ## Overview
 
