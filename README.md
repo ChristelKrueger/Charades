@@ -16,7 +16,7 @@ The input for Charades are gzipped Fastq files (fastq.gz). If paired end or inde
 Charades will then extract the first 100 000 reads from each file and collect base composition information for 11 positions between base 1 and 30. The base composition information is written to a file called 'sequence_composition_stats.csv' and 'sequence_composition_stats.arff' the latter being the input format for the machine learning software Weka.
 
 ### Predicting the libray
-Charades the calls WEKA to use a logistic regression classifier to predict the library type from the base compositin information. For this a file with training data is provided: 'training_data_20181211.arff'. This currently contains base composition information for 236 bisulfite libraries from 12 different library types. Prediction accuracy is at 99 % using 10-fold cross-validation.
+Charades the calls WEKA to use a logistic regression classifier to predict the library type from the base composition information. For this a file with training data is provided: 'training_data_20181211.arff'. This currently contains base composition information for 236 bisulfite libraries from 12 different library types. Prediction accuracy is at 99 % using 10-fold cross-validation.
 
 ### Reporting the prediction
 Charades will report the predicted library directly in the console, but it will also save the Weka output and a tab delimited file containing the probabilities for each library (class.probabilities.txt). If R is available, a graphical summary heatmap is also produced.
@@ -25,14 +25,13 @@ Charades will report the predicted library directly in the console, but it will 
 - Perl
 - Weka
 - R (with the tidyverse package if you want a graphical output)
-- write permission to the working directory
 - the training data file in the same directory as charades itself
 - files to analyse in fastq.gz format
 
 <img src="images/examples_heat_map.png" width="500" height="500">
 
 ## Disclaimer
-This is a first working version of Charades which I'm sure has many teething problems. Please report any issues on github or to christel.krueger@babraham.ac.uk.
+This is a first working version of Charades which I'm sure has many teething problems. Please report any issues on GitHub or to christel.krueger@babraham.ac.uk.
 
 ### A few known issues
 - Charades currently always puts out a prediction. Even if the sample is not a bisulfite library at all.
