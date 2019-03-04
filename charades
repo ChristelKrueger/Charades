@@ -3,14 +3,17 @@ use warnings;
 use strict;
 use Cwd;
 use Getopt::Long;
+use FindBin qw($RealBin);
+use lib "$RealBin/../lib";
 
-# This script looks at the first 100 000 sequences from a bisulfite split fastq file and then
+
+# This script looks at the first 100,000 sequences from a bisulfite split fastq file and then
 # tries to find out which how the library was created. It will use sequence composition at different
 # positions in the sequence.
 
 my $debug;
 my @files_to_analyse;
-my ($output_dir, $parent_dir, $project,$r_path) = process_commandline();
+my ($output_dir, $parent_dir, $project,$r_path, $weka_path) = process_commandline();
 
 
 files_to_analyse();
@@ -30,12 +33,14 @@ sub process_commandline {
 	my $help;
 	my $output_dir;
 	my $project;
-	my $r_path = "R";
+	my $r_path;
+	my $weka_path;
 	
 	my $command_line =  GetOptions ('help'                => \$help,
 									'o|output_dir=s'      => \$output_dir,
 									'p|project=s'		  => \$project,
 									'r_path=s'			  => \$r_path,
+									'weka_path=s'		  => \$weka_path,
 									);
 	
 	
@@ -50,12 +55,14 @@ sub process_commandline {
 	die "\nPlease specifiy gzipped fastq files\n\n" unless (@ARGV);
 	
 	### PARENT DIRECTORY
+	
     my $parent_dir = getcwd();
     unless ($parent_dir =~ /\/$/){    ## making parent directory end in a slash
 		$parent_dir =~ s/$/\//;
     }
 
     ### OUTPUT DIRECTORY
+	
     if (defined $output_dir){
 		unless ($output_dir eq ''){
 			unless ($output_dir =~ /\/$/){     ## making output directory end in a slash
@@ -88,8 +95,56 @@ sub process_commandline {
     # Changing back to parent directory
     chdir $parent_dir or die "Failed to move to $parent_dir\n";
 	
+		
+	
+	### CHECK R PATH
+	
+	if (defined $r_path) {
+		if ((system "$r_path --version > /dev/null 2>&1") == 0) {
+			warn "\nFound working R installation at $r_path\n";
+		}
+		else {
+			die "No working R installation found at this path: $r_path.\nPlease respecify.\n\n";
+		}
+		
+	}
+	else {
+		$r_path = `which R 2>/dev/null`;
+		chomp $r_path;
+		if ($r_path eq "") {
+			warn "\nNo working R installation found. No graph will be generated.\n\n";
+		}
+		else {
+			warn "\nFound R installation at $r_path.\n";
+		}
+	
+	}
+	
+	### CHECK WEKA PATH
+	
+	if (defined $weka_path) {
+		if (-e ${weka_path}.".jar") {
+			warn "\nFound Weka installation at $weka_path\n";
+		}
+		else {
+			die "\nNo working Weka installation found at this path: $weka_path.\nPlease respecify.\n\n";
+		}
+		
+	}
+	else {
+		$weka_path = `which weka 2>/dev/null`;
+		chomp $weka_path;
+		if ($weka_path eq "") {
+			die "\nNo working Weka installation found. Exiting.\n\n";
+		}
+		else {
+			warn "\nFound Weka installation at $weka_path.\n";
+		}
+	}
+	
 	
 	### PROJECT NAME
+	
 	if (defined $project) {
 		$project = $project.".";
 	}
@@ -99,7 +154,7 @@ sub process_commandline {
 	}
 	
 	
-	return ($output_dir, $parent_dir, $project,$r_path);
+	return ($output_dir, $parent_dir, $project,$r_path, $weka_path);
 	
 	
 	
@@ -148,7 +203,7 @@ sub extract_100K_reads {
 	my @subfolders;										
 	mkdir "${output_dir}charades_temp" or die "Could not create temporary directory: $!";
 	
-	warn "\nExtracting the first 100 000 reads from fastq files\n\n";
+	warn "\nExtracting the first 100,000 reads from fastq files\n\n";
 	my $file_name;
 
 	foreach my $file_to_analyse(@files_to_analyse) { 
@@ -225,7 +280,7 @@ sub collect_base_composition_info {
 	my %info;			## This is the data structure that contains all the base composition info (hash of array of hashes)
 
 	unless (@file_heads) {
-		die "Cannot find files for first 100 000 reads.Exiting.\n";
+		die "Cannot find files for first 100,000 reads.Exiting.\n";
 	}
 	
 	FILE: foreach my $file_head(@file_heads) {
@@ -257,6 +312,7 @@ sub collect_base_composition_info {
 				warn "Sequence in $file_head contains bases other than A, T, C, G, N. Skipping.\n";
 				next FILE;
 			}
+			
 			my $plusline = <$in>;
 			unless ($plusline =~ /^\+/) {
 				warn "$file_head does not look like it's in fastq format. Skipping.\n";
@@ -287,14 +343,15 @@ sub collect_base_composition_info {
 		foreach my $interesting_position(@interesting_positions) {
 			foreach my $read(@reads) {
 				$read = uc($read);
-				my $base = substr($read, $interesting_position -1,1);
 		
-				unless ($base) {
+				unless (length($read) > 30) {
 					warn "A read in $file_head is shorter than expected with only ", length($read), " bases. 
-					Is this a trimmed file? \nSkipping Sequence: ", $read, "\n";
+					\nSkipping Sequence: ", $read, "\n";
 					next;
 				} # There shouldn't be any shorter reads unless the runs are really old.
 			
+				my $base = substr($read, $interesting_position -1,1);
+				
 				if ($base eq "A") {
 					++ $As;
 				}
@@ -398,12 +455,15 @@ sub collect_base_composition_info {
 sub guess_library {
 	
 	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\nTaining data from file training_data_20181211.arff\n\n";
-	unless (-e "training_data_20181211.arff") {
-		die "Couldn't find file >> training_data_20181211.arff <<. Please add it to the same directory as charades.pl.\n\n\n";
+	#warn "Real bin is $RealBin\n";
+	unless (-e "$RealBin/training_data_20181211.arff") {
+		die "Couldn't find file >> training_data_20181211.arff <<. Please add it to the same directory as charades.\n\n\n";
 	}
-	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_20181210.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
-	system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.functions.Logistic -R 1 -t training_data_20181211.arff -T ${output_dir}${project}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
 	
+	
+	#system "java -cp '/bi/apps/weka/3.8.2/weka.jar' weka.classifiers.trees.J48 -t training_data_20181210.arff -T sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+	system "java -cp '${weka_path}.jar' weka.classifiers.functions.Logistic -R 1 -t $RealBin/training_data_20181211.arff -T ${output_dir}${project}sequence_composition_stats.arff -distribution -p 0 > ${output_dir}weka.output";
+
 	open (my $in,"${output_dir}weka.output") or die "Cannot open Weka output file: $!";
 	open (my $out, '>', "${output_dir}${project}class.probabilities.txt") or die "Cannot create class probability file: $!";
 	
@@ -494,66 +554,55 @@ sub guess_library {
 
 
 sub draw_graph {
-
-	my $infile = "${output_dir}${project}class.probabilities.txt";
-	my $graph = "${project}probabilities.png";
 	
-	if ($output_dir eq "") {
-		$output_dir = getcwd();
+	if ($r_path eq "") {
+		warn "\n\nNo graphical output generated. Please set an R path if you want a probability heatmap.\nA path to R can be set using the option --r_path\n\n";	
 	}
+	else {
+
+		my $infile = "${output_dir}${project}class.probabilities.txt";
+		my $graph = "${project}probabilities.png";
 	
-	my $r_script = <<"END_SCRIPT";
+		if ($output_dir eq "") {
+			$output_dir = getcwd();
+		}
 	
-		directory <- "$output_dir";
-		file <- "$infile";
-		graph <- "$graph";
+		unless ($output_dir =~ /\/$/){
+			$output_dir =~ s/$/\//;
+		}
+	
+		my $r_script = <<"END_SCRIPT";
+	
+			directory <- "$output_dir";
+			file <- "$infile";
+			graph <- "$graph";
 		
-		setwd(directory)
-
-		read.delim(file,stringsAsFactors = FALSE) -> class.probabilities
-		row.names(class.probabilities) <- class.probabilities[,1]
-		class.probabilities[2:ncol(class.probabilities)] -> class.probabilities
-		substr(row.names(class.probabilities),1,20) -> row.names(class.probabilities)
-		as.matrix(t(class.probabilities)) -> class.probabilities
-
-		library(RColorBrewer)
-		cols = brewer.pal(12,"Paired")
+			setwd(directory)
 		
-		png(filename = "$graph", width = 800, height = max(400,60 + (20*ncol(class.probabilities))))
+			library(readr)
+			library(tidyr)
+			library(ggplot2)
 
-		par(oma = c(1,1,1,9), mar = c(5,12,4,3))
-
-		barplot(class.probabilities,
-			horiz = T,
-			col = cols,
-			main = "Probabilities for each method",
-			las = 1,
-			xlab = "probability"
-			)
-
-		par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
-		plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n")
-
-		legend ("topright",
-			legend = row.names(class.probabilities),
-			fill = cols,
-			xpd = T,
-			inset = c(0.08,0.2)
-			)
-
-		dev.off()
+				read_tsv(file) -> probabilities
+			
+				gather(probabilities,prediction, probability, 2:13) -> probabilities.long
+				graph <- ggplot(probabilities.long,aes(prediction, sample)) + geom_tile(aes(fill = probability)) + scale_fill_gradient (low = "white", high = "steelblue") +
+				labs(y = "sample", x = "prediction") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+				ggsave("$graph")
+		
 		
 END_SCRIPT
 		
-		warn "The path to R is $r_path\n" if $debug;
-		
-		open (my $in, "| \"$r_path\" --no-save > /dev/null 2>&1") or die "Can't open pipe to '$r_path'  - do you need to set an rpath?";
+	
+		open (my $filehandle_to_R, "| \"$r_path\" --no-save > /dev/null 2>&1") or die "Can't open pipe to '$r_path'";
+#		open (my $filehandle_to_R, "| \"$r_path\" --no-save ") or die "Can't open pipe to '$r_path'  - do you need to set an rpath?";
 
-		print $in $r_script;
+		print $filehandle_to_R $r_script;
 
-		close $in or die "Can't write to '$r_path' pipe - Do your file names start with 20 common characters?";
-
-		
+		close $filehandle_to_R or die "Can't write to '$r_path' pipe";
+		unlink("${output_dir}Rplots.pdf") or die "Couldn't delete empty Rplots.pdf file";
+	}
+	
 }
 
 
