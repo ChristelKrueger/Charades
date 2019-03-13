@@ -44,7 +44,7 @@
 @attribute pos30_C numeric
 @attribute pos30_T numeric
 @attribute pos30_G numeric
-@attribute method {Swift,6N_PBAT,6N_sc,9N_sc,WGBS,RRBS,scNOME,UMI_RRBS,9N_PBAT,Amplicon,NOMEseq,Truseq}
+@attribute method {Swift,6N_PBAT,6N_sc,9N_sc,WGBS,RRBS,scNOME,UMI_RRBS,9N_PBAT,Amplicon,NOMEseq,Truseq,RNA,ChIP,ATAC,WGS}
 
 @data
 39,2,41,16,36,0,42,20,32,0,42,24,32,0,44,22,32,1,44,21,32,1,45,20,31,1,46,20,30,1,47,20,30,1,48,20,29,0,48,20,30,1,49,19,Swift
