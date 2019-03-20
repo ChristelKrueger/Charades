@@ -8,22 +8,17 @@ use lib "$RealBin/../lib";
 
 
 # This script looks at the first 100,000 sequences from a bisulfite split fastq file and then
-# tries to find out which how the library was created. It will use sequence composition at different
+# tries to find out how the library was created. It will use sequence composition at different
 # positions in the sequence.
 
-my $command = join(" ",@ARGV);
 my $debug;
 my @files_to_analyse;
-my ($output_dir, $parent_dir, $project,$r_path, $weka_path,$training,$force,$fastq) = process_commandline();
+my @options;
+my ($output_dir, $parent_dir, $project,$r_path, $weka_path,$training,$maverick, $force) = process_commandline();
 
 open (my $log_file,'>',"${output_dir}${project}charades_log.txt") or die "Cannot write log file: $!";
 
-print $log_file "Charades command line options: $command\n";
-print $log_file "Project name: $project\n";
-print $log_file "Path to R: $r_path\n";
-print $log_file "Path to Weka: $weka_path\n";
-print $log_file "Training data file: $training\n";
-
+log_file_basics();
 files_to_analyse();
 extract_100K_reads();
 collect_base_composition_info();
@@ -39,6 +34,7 @@ close $log_file or die;
 ### SUBROUTINES ###
 ###################
 
+
 sub process_commandline {
 
 	my $help;
@@ -48,8 +44,8 @@ sub process_commandline {
 	my $weka_path;
 	my $install_r_packages;
 	my $training;
+	my $maverick;
 	my $force;
-	my $fastq;
 	
 	my $command_line =  GetOptions ('help'                => \$help,
 									'o|output_dir=s'      => \$output_dir,
@@ -58,12 +54,43 @@ sub process_commandline {
 									'w|weka_path=s'		  => \$weka_path,
 									'install_r_packages'  => \$install_r_packages,
 									't|training=s'		  => \$training,
+									'm|maverick'		  => \$maverick,
 									'f|force'			  => \$force,
-									'fastq' 			  => \$fastq,
 									);
 	
 	
 	die "Please respecify command line options\n\n" unless ($command_line);
+
+	
+	### RECREATING SPECIFIED COMMANDLINE OPTIONS
+	
+	if (defined $output_dir) {
+		push @options,"--output_dir $output_dir";
+	}
+	if (defined $project){
+		push @options,"--project $project";
+	}
+	
+	if (defined $r_path) {
+		push @options, "--r_path $r_path";
+	}
+	
+	if (defined $weka_path) {
+		push @options, "--weka_path $weka_path";
+	}
+	
+	if (defined $training) {
+		push @options, "--training $training";
+	}
+	
+	if (defined $maverick) {
+		push @options, "--maverick";
+	}
+	
+	if (defined $force) {
+		push @options, "--force";
+	}
+	
 	
 
 	### PRINT HELPFILE
@@ -105,15 +132,15 @@ sub process_commandline {
 	    }
 	    
 		else {
-			mkdir $output_dir or die "Unable to create directory >$output_dir< $!\n";
-			warn "\nCreating output directory >$output_dir< \n\n"; 
-			chdir $output_dir or die "Failed to move to >$output_dir<\n";
+			mkdir $output_dir or die "Unable to create directory '$output_dir' $!\n";
+			warn "\nCreating output directory '$output_dir' \n\n"; 
+			chdir $output_dir or die "Failed to move to '$output_dir'\n";
 			$output_dir = getcwd(); #  making the path absolute
 			unless ($output_dir =~ /\/$/){
 				$output_dir =~ s/$/\//;
 			}
 	    }
-	    warn "\nOutput will be written into the directory: >$output_dir<\n";
+	    warn "\nOutput will be written into the directory: '$output_dir'\n";
 		}
     }
     else {
@@ -121,7 +148,7 @@ sub process_commandline {
     }
 
     # Changing back to parent directory
-    chdir $parent_dir or die "Failed to move to >$parent_dir<\n";
+    chdir $parent_dir or die "Failed to move to '$parent_dir'\n";
 	
 		
 	
@@ -129,10 +156,10 @@ sub process_commandline {
 	
 	if (defined $r_path) {
 		if ((system "$r_path --version > /dev/null 2>&1") == 0) {
-			warn "\nFound working R installation at >$r_path<\n";
+			warn "\nFound working R installation at '$r_path'\n";
 		}
 		else {
-			die "No working R installation found at this path: >$r_path<.\nPlease respecify.\n\n";
+			die "No working R installation found at this path: '$r_path'.\nPlease respecify.\n\n";
 		}
 		
 	}
@@ -143,7 +170,7 @@ sub process_commandline {
 			warn "\nNo working R installation found. No graph will be generated.\n\n";
 		}
 		else {
-			warn "\nFound R installation at >$r_path<\n";
+			warn "\nFound R installation at '$r_path'\n";
 		}
 	
 	}
@@ -168,10 +195,10 @@ sub process_commandline {
 	
 	if (defined $weka_path) {
 		if (-e $weka_path) {
-			warn "\nFound weka.jar at >$weka_path<\n";
+			warn "\nFound weka.jar at '$weka_path'\n";
 		}
 		else {
-			die "\nNo weka.jar file found at this path: >$weka_path<.\nPlease respecify.\n\n";
+			die "\nNo 'weka.jar' file found at this path: '$weka_path'.\nPlease respecify.\n\n";
 		}
 		
 	}
@@ -185,13 +212,13 @@ sub process_commandline {
 		## weka.jar is sometimes found in the weka folder (weka installations)
 		if (-e "${weka_folder}.jar") {
 			$weka_path = ${weka_folder}.".jar";
-			warn "\nFound weka.jar at >$weka_path<\n";
+			warn "\nFound weka.jar at '$weka_path'\n";
 		}
 		
 		## weka.jar is also sometimes found here (ubuntu)
 		elsif (-e "/usr/share/java/weka.jar") {
 			$weka_path = "/usr/share/java/weka.jar";
-			warn "\nFound weka.jar at >$weka_path<.\n";
+			warn "\nFound weka.jar at '$weka_path'.\n";
 		}
 		else {
 			die "\nCould not find file >>> weka.jar <<<. Please specify the location of this file using --weka_path\n\n";
@@ -215,15 +242,15 @@ sub process_commandline {
 	
 	if (defined $training) {
 		if (-e "${RealBin}/${training}") {
-			warn "\nFound training data file >$training<\n";
+			warn "\nFound training data file '$training'\n";
 		}
 		else {
-			die "\nCouldn't find training data file >$training< in Charades directory. Exiting.\n\n\n";
+			die "\nCouldn't find training data file '$training' in Charades directory. Exiting.\n\n\n";
 		}
 	}
 	else {
 		$training = "training_data_20190313.arff";
-		warn "\nUsing default training data file >$training<\n";
+		warn "\nUsing default training data file '$training'\n";
 	}
 	
 	unless ($training =~ /.arff$/) {
@@ -233,15 +260,16 @@ sub process_commandline {
 		
 	
 	
-	return ($output_dir, $parent_dir, $project,$r_path, $weka_path,$training,$force,$fastq);
+	return ($output_dir, $parent_dir, $project,$r_path, $weka_path,$training,$maverick, $force);
 	
 	
 	
 }
 
+
 sub print_helpfile{
 	
-	print "\n\nCharades will try and predict which bisulfite sequencing library preparation was used. It uses gzipped fastq files as input.\n\n";
+	print "\n\nCharades will try and predict which bisulfite sequencing library preparation was used. It uses (gzipped) fastq files as input.\n\n";
 	print ">>> USAGE: ./charades.pl [options] filename(s) <<<\n\n";
 	print "\nOptions:\n\n";
 	print "--output_dir / -o [path]\tOutput directory, either relative or absolute. If not specified, output is written to the current directory.\n\n";
@@ -250,12 +278,36 @@ sub print_helpfile{
 	print "--weka_path / -w [path]\t\tLocation of 'weka.jar'. If not specified, Charades will attempt to find it.\n\n";
 	print "--training / -t [file] \t\tFile containing training data. Needs to be in the same directory as Charades. Default is provided.\n";
 	print "\t\t\t\tDo NOT change light heartedly!\n\n";
-	print "--force / f\t\t\tBy default Charades will check if the sample looks anything like BSseq data. Use this option to skip this check,\n";
+	print "--maverick / -m\t\t\tBy default Charades will check if the sample looks anything like BSseq data. Use this option to skip this check,\n";
 	print "\t\t\t\tbut be warned that any library (eg RNAseq, ChIPseq, ATACseq, WGS etc) will produce a BSseq library prediction.\n\n";
-	print "--fastq\t\t\t\tIf specified, Charades will assume input file is in non-zipped fastq format\n\n";
+	print "--force / -f\t\t\tCharades will overwrite the directory 'charades_temp' in the output folder\n\n";
 	print "--install_r_packages\t\tCharades will install R packages readr, tidyr and ggplot2.\n\n\n";
 	
 	print "Please report bugs to christel.krueger\@babraham.ac.uk\n\n";
+}
+
+
+sub log_file_basics {
+
+	if (scalar @options == 0) {
+		print $log_file "Using Charades with default options\n\n";
+	}
+	
+	else {
+		print $log_file "Command line options specified: ".join(" ",@options)."\n\n";
+	}
+
+	if ($project eq "") {
+		print $log_file "No project name specified\n";
+	}
+	else {
+		print $log_file "Project name: $project\n";
+		}
+		
+	print $log_file "Path to R: $r_path\n";
+	print $log_file "Path to Weka: $weka_path\n";
+	print $log_file "Training data file: $training\n";
+
 }
 
 
@@ -265,10 +317,10 @@ sub install_r_packages {
 	
 	if (defined $r_path) {
 		if ((system "$r_path --version > /dev/null 2>&1") == 0) {
-			warn "\nFound working R installation at >$r_path<\n";
+			warn "\nFound working R installation at '$r_path'\n";
 		}
 		else {
-			die "No working R installation found at this path: >$r_path<\nPlease respecify.\n\n";
+			die "No working R installation found at this path: '$r_path'\nPlease respecify.\n\n";
 		}
 		
 	}
@@ -279,7 +331,7 @@ sub install_r_packages {
 			warn "\nNo working R installation found. Please install R.\n\n";
 		}
 		else {
-			warn "\nFound R installation at >$r_path<\n\n";
+			warn "\nFound R installation at '$r_path'\n\n";
 		}
 	
 	}
@@ -298,14 +350,13 @@ sub install_r_packages {
 }
 
 
-
 sub files_to_analyse {											
 
 ## Finding out which files to analyse
 
 	my @files = @ARGV;
 	unless (@files) {
-		print "Please provide one or more fastq.gz files for analysis\n\n";
+		print "Please provide one or more fastq.gz / fastq files for analysis\n\n";
 	}
 	my $length = @files;
 	warn "\nScanning $length input file(s).\n";
@@ -315,8 +366,8 @@ sub files_to_analyse {
 	foreach my $file(@files) {
 	
 		unless (-e $file) {
-			warn ">$file< does not exist. Skipping.\n";
-			print $log_file ">$file< does not exist. Skipping\n";
+			warn "'$file' does not exist. Skipping.\n";
+			print $log_file "'$file' does not exist. Skipping\n";
 			next;
 		}
 	
@@ -339,15 +390,20 @@ sub files_to_analyse {
 }
 
 
-
-
 sub extract_100K_reads {
 
 	my @subfolders;
-	if (-e "${output_dir}charades_temp" and -d "${output_dir}charades_temp") {
-		print $log_file "Directory >>> charades_temp <<< exists. Please remove before proceeding\n\n";
-		die "A folder called >>> charades_temp <<< exists in the output directory. Please remove before proceeding.\n\n";
+	
+	if (defined $force and -e "${output_dir}charades_temp" and -d "${output_dir}charades_temp") {
+		system "rm -r ${output_dir}charades_temp";
 	}
+	
+	elsif (-e "${output_dir}charades_temp" and -d "${output_dir}charades_temp") {
+		print $log_file "Directory >>> charades_temp <<< exists. Use option --force / -f to overwrite.\n\n";
+		die "A folder called >>> charades_temp <<< exists in the output directory. Use option --force / -f to overwrite.\n\n";
+	}
+		
+	
 	mkdir "${output_dir}charades_temp" or die "Could not create temporary directory: $!";
 	
 	warn "\nExtracting the first 100,000 reads from fastq files\n\n";
@@ -359,11 +415,11 @@ sub extract_100K_reads {
 		$file_name =~ s/^.*\///;
 		my $in;
 		
-		if (defined $fastq) {
-			open ($in, $file_to_analyse) or die "Could not open file to analyse: $!";
+		if ($file_name =~ /.gz$/) {
+			open ($in, "gunzip -c $file_to_analyse |") or die "Could not open file to analyse: $!";
 		}
 		else {
-			open ($in, "gunzip -c $file_to_analyse |") or die "Could not open file to analyse: $!";
+			open ($in, $file_to_analyse) or die "Could not open file to analyse: $!";
 		}
 		
 		open (my $out,'>', "${output_dir}charades_temp/$file_name.100K.fastq") or die "Cannot write out first 100K reads: $!";
@@ -380,16 +436,16 @@ sub extract_100K_reads {
 			
 			if ($count == 1) {
 				unless ($header =~ /^@/) {
-					die ">$file_name< does not look like it's in fastq format. Exiting.\n\n";
+					die "'$file_name' does not look like it's in fastq format. Exiting.\n\n";
 				}
 				unless ($sequence =~ /^[A|T|C|G|N]*$/) {
-					die "Sequence in >$file_name< contains bases other than A, T, C, G, N. Exiting.\n\n";
+					die "Sequence in '$file_name' contains bases other than A, T, C, G, N. Exiting.\n\n";
 				}
 				unless ($plusline =~ /^\+/) {
-					die ">$file_name< does not look like it's in fastq format. Exiting.\n\n";
+					die "'$file_name' does not look like it's in fastq format. Exiting.\n\n";
 				}
 				unless ($quality_scores) {
-					die ">$file_name< does not look like it's in fastq format. Exiting.\n\n";
+					die "'$file_name' does not look like it's in fastq format. Exiting.\n\n";
 				}
 			}
 			
@@ -401,8 +457,6 @@ sub extract_100K_reads {
 		close $out or die "Problem writing out first 100K reads: $!";
 	}
 }
-
-
 
 
 sub collect_base_composition_info {
@@ -486,24 +540,24 @@ sub collect_base_composition_info {
 
 		## Collecting all the reads from the fastq file.
 		my @reads;
-		warn "Summarising sequence composition for >$file_name<\n";
+		warn "Summarising sequence composition for '$file_name'\n";
 
 		while (<$in>) {
 	
 			my $header = $_;
 			unless ($header =~ /^@/) {
-				warn ">$file_head< does not look like it's in fastq format. Skipping.\n";
+				warn "'$file_head' does not look like it's in fastq format. Skipping.\n";
 				next FILE;
 			}
 			my $sequence = <$in>;
 			unless ($sequence =~ /^[A|T|C|G|N]*$/) {
-				warn "Sequence in >$file_head< contains bases other than A, T, C, G, N. Skipping.\n";
+				warn "Sequence in '$file_head' contains bases other than A, T, C, G, N. Skipping.\n";
 				next FILE;
 			}
 			
 			my $plusline = <$in>;
 			unless ($plusline =~ /^\+/) {
-				warn ">$file_head< does not look like it's in fastq format. Skipping.\n";
+				warn "'$file_head' does not look like it's in fastq format. Skipping.\n";
 				next FILE;
 			}
 			my $quality_scores = <$in>;
@@ -533,7 +587,7 @@ sub collect_base_composition_info {
 				$read = uc($read);
 		
 				unless (length($read) > 30) {
-					warn "A read in >$file_head< is shorter than expected with only ", length($read), " bases. 
+					warn "A read in '$file_head' is shorter than expected with only ", length($read), " bases. 
 					\nSkipping Sequence: ", $read, "\n";
 					next;
 				} # There shouldn't be any shorter reads unless the runs are really old.
@@ -562,7 +616,7 @@ sub collect_base_composition_info {
 			#warn "There were $As As, $Cs Cs, $Ts Ts, $Gs, Gs and $Ns other bases at position $interesting_position\n";
 			
 			if ($As+$Cs+$Ts+$Gs+$Ns == 0) {
-				warn "File >$file_head< does not seem to contain a (long enough)sequence.\n";
+				warn "File '$file_head' does not seem to contain a (long enough)sequence.\n";
 				next FILE;
 			}
 	
@@ -637,10 +691,9 @@ sub collect_base_composition_info {
 }	
 
 
-
 sub maverick_library {
 
-	unless (defined $force) {
+	unless (defined $maverick) {
 		warn "\nChecking for non-bisulfite libraries\n\n";
 		
 		## Call Weka
@@ -688,17 +741,16 @@ sub maverick_library {
 			print $log_file "No non-bisulfite libraries detected\n";
 		}
 		else {
-			print "\n\nSome samples ($count) don't look like they are bisulfite libraries.\n";
-			print $log_file "Some samples ($count) don't look like they are bisulfite libraries.\n";
-			print $log_file "If you are sure they are, run Charades using the -f /--force option to override.\n";
-			die "If you are sure they are, run Charades using the -f /--force option to override.\n\n";
+			warn "\n\nSome samples ($count) don't look like they are bisulfite libraries.Exiting.\n";
+			print $log_file "Some samples ($count) don't look like they are bisulfite libraries. Exiting.\n";
+			print $log_file "If you want to run the predictions anyway, use the --maverick / -m option to override.\n\n";;
+			warn "If you want to run the predictions anyway, use the --maverick / -m option to override.\n";
+			warn "Be warned though that Charades will then always predict a bisulfite library type (even if it is, say, RNAseq).\n";
+			die "\n";
 		}
 	}
 
 }
-
-
-
 
 
 sub guess_library {
@@ -706,7 +758,7 @@ sub guess_library {
 	warn "\n\nUsing Weka Logistic Regression classifier to predict library method\n\n";
 	unless (-e "${RealBin}\/${training}") {
 		print $log_file "Could not find training data.\n";
-		die "Couldn't find file >$training<. Please add it to the same directory as charades.\n\n\n";
+		die "Couldn't find file '$training'. Please add it to the same directory as charades.\n\n\n";
 	}
 	
 
@@ -738,6 +790,8 @@ sub guess_library {
 	
 	## making the header for the class probability file which is then to be used for the graphical representation
 	print $out "sample\tSwift\tPBAT_6N\tsc_6N\tsc_9N\tWGBS\tRRBS\tscNOME\tUMI_RRBS\tPBAT_9N\tAmplicon\tNOMEseq\tTruseq\n";
+	print "\nPredictions\n-------------------------------------------------------\n\nSample\tLibrary\n\n";
+	print $log_file "\nPredictions\n-------------------------------------------------------\n\nSample\tLibrary\n\n";
 	
 	while(<$in>) {
 		unless ($_) {
@@ -768,8 +822,8 @@ sub guess_library {
 				$sample = $files_to_analyse[$i];
 				$sample =~ s/^.*\///;
 				
-				warn "The predicted bisulfite library for $sample is $class \n";
-				print $log_file "The predicted bisulfite library for $sample is $class \n";
+				print $sample."\t".$class."\n";
+				print $log_file $sample."\t".$class."\n";
 				print $out "$sample\t$Swift\t$PBAT_6N\t$sc_6N\t$sc_9N\t$WGBS\t$RRBS\t$scNOME\t$UMI_RRBS\t$PBAT_9N\t$Amplicon\t$NOMEseq\t$Truseq\n";
 
 				++$i;
